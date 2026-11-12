@@ -1,0 +1,7 @@
+services:
+  cli:
+    build: .
+    profiles: ["cli"]
+    environment:
+      GAMESLIST_API_URL: ${GAMESLIST_API_URL:-http://api:8080}
+      GAMESLIST_TOKEN: ${GAMESLIST_TOKEN:-}
