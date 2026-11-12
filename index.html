@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GameList</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --panel: #1a1f36;
+      --border: #2c3354;
+      --text: #e8ebf7;
+      --muted: #9aa3c7;
+      --accent: #7c5cff;
+      --accent-hover: #6a49f0;
+      --danger: #ff6b81;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 16px;
+      background: radial-gradient(1200px 600px at 50% -10%, #1d2350 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .brand { text-align: center; margin: 24px 0 20px; }
+    .brand h1 { margin: 0; font-size: 2rem; letter-spacing: .02em; }
+    .brand h1 span { color: var(--accent); }
+    .brand p { margin: 6px 0 0; color: var(--muted); }
+    .narrow { max-width: 420px; margin: 0 auto; }
+    .wide { max-width: 960px; margin: 0 auto; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+    }
+    label { display: block; margin-bottom: 14px; font-size: .9rem; color: var(--muted); }
+    input {
+      width: 100%;
+      margin-top: 6px;
+      padding: 11px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #12162b;
+      color: var(--text);
+      font-size: 1rem;
+    }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button {
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.block { width: 100%; padding: 12px; }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: .6; cursor: wait; }
+    button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .error { min-height: 1.3em; margin: 0 0 12px; color: var(--danger); font-size: .9rem; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .topbar h1 { margin: 0; font-size: 1.5rem; }
+    .topbar h1 span { color: var(--accent); }
+    .topbar .who { color: var(--muted); margin-right: 12px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tabs button { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .placeholder { margin: 0; color: var(--muted); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- ======================= LOGIN (issue #1) ======================= -->
+  <main id="login-view" class="narrow">
+    <header class="brand">
+      <h1>Game<span>List</span></h1>
+      <p>Sua lista de jogos, num só lugar.</p>
+    </header>
+    <section class="card" aria-labelledby="login-title">
+      <h2 id="login-title" style="margin-top:0">Entrar</h2>
+      <form id="login-form" novalidate>
+        <label>Usuário
+          <input id="username" name="username" autocomplete="username" required>
+        </label>
+        <label>Senha
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="login-error" class="error" role="alert" aria-live="polite"></p>
+        <button id="login-button" class="block" type="submit">Entrar</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- ================= TELA INICIAL / SHELL (issue #1) ================= -->
+  <main id="app-view" class="wide" hidden>
+    <header class="topbar">
+      <h1>Game<span>List</span></h1>
+      <div>
+        <span class="who">Olá, <strong id="app-user"></strong></span>
+        <button id="logout-button" type="button" class="secondary">Sair</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Seções">
+      <button type="button" role="tab" data-tab="cadastro" aria-selected="true">Cadastro</button>
+      <button type="button" role="tab" data-tab="listagem" aria-selected="false">Listagem</button>
+      <button type="button" role="tab" data-tab="busca" aria-selected="false">Busca</button>
+      <button type="button" role="tab" data-tab="dashboard" aria-selected="false">Dashboard</button>
+    </nav>
+
+    <!-- Cada issue escreve SOMENTE dentro do seu bloco. Estilos próprios podem usar <style> dentro do bloco. -->
+    <section id="tab-cadastro" class="card" role="tabpanel">
+      <!-- ===== #2 inicio: cadastro/edição web (B) ===== -->
+      <p class="placeholder">Cadastro de jogos: em breve (issue #2).</p>
+      <!-- ===== #2 fim ===== -->
+    </section>
+
+    <section id="tab-listagem" class="card" role="tabpanel" hidden>
+      <!-- ===== #3 inicio: listagem/exclusão web (C) ===== -->
+      <p class="placeholder">Listagem de jogos: em breve (issue #3).</p>
+      <!-- ===== #3 fim ===== -->
+    </section>
+
+    <section id="tab-busca" class="card" role="tabpanel" hidden>
+      <!-- ===== #4 inicio: busca web (C) ===== -->
+      <p class="placeholder">Busca avançada: em breve (issue #4).</p>
+      <!-- ===== #4 fim ===== -->
+
+      <!-- ===== #5 inicio: exportação CSV web (A) ===== -->
+      <!-- ===== #5 fim ===== -->
+    </section>
+
+    <section id="tab-dashboard" class="card" role="tabpanel" hidden>
+      <!-- ===== #6 inicio: dashboard web (A) ===== -->
+      <p class="placeholder">Dashboard: em breve (issue #6).</p>
+      <!-- ===== #6 fim ===== -->
+    </section>
+  </main>
+
+  <script>
+    // ======================= BASE COMPARTILHADA (issue #1) =======================
+    const API = "/api/web";
+    const TOKEN_KEY = "gamelist.token";
+    const USER_KEY = "gamelist.user";
+
+    const loginView = document.getElementById("login-view");
+    const appView = document.getElementById("app-view");
+    const form = document.getElementById("login-form");
+    const errorBox = document.getElementById("login-error");
+    const loginButton = document.getElementById("login-button");
+
+    function load(key) {
+      try { return sessionStorage.getItem(key); } catch { return null; }
+    }
+    function save(key, value) {
+      try {
+        if (value) sessionStorage.setItem(key, value);
+        else sessionStorage.removeItem(key);
+      } catch { /* armazenamento indisponível: a sessão vale só até recarregar */ }
+    }
+
+    function showLogin() {
+      appView.hidden = true;
+      loginView.hidden = false;
+      document.getElementById("username").focus();
+    }
+    function showApp(user) {
+      document.getElementById("app-user").textContent = user;
+      loginView.hidden = true;
+      appView.hidden = false;
+    }
+    function logout() {
+      save(TOKEN_KEY, null);
+      save(USER_KEY, null);
+      showLogin();
+    }
+
+    // Use apiFetch em todas as chamadas protegidas: envia o Bearer e volta ao login em caso de 401.
+    async function apiFetch(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      const token = load(TOKEN_KEY);
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      const response = await fetch(`${API}${path}`, { ...options, headers });
+      if (response.status === 401) logout();
+      return response;
+    }
+
+    function showTab(name) {
+      document.querySelectorAll("[data-tab]").forEach((button) => {
+        button.setAttribute("aria-selected", String(button.dataset.tab === name));
+      });
+      document.querySelectorAll("[role=tabpanel]").forEach((panel) => {
+        panel.hidden = panel.id !== `tab-${name}`;
+      });
+    }
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+      button.addEventListener("click", () => showTab(button.dataset.tab));
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox.textContent = "";
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      if (!username || !password) {
+        errorBox.textContent = "Informe usuário e senha.";
+        return;
+      }
+      loginButton.disabled = true;
+      try {
+        const response = await fetch(`${API}/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        if (response.status === 401) {
+          errorBox.textContent = "Usuário ou senha inválidos.";
+          return;
+        }
+        if (!response.ok) {
+          errorBox.textContent = "Não foi possível entrar agora. Tente novamente.";
+          return;
+        }
+        const data = await response.json();
+        save(TOKEN_KEY, data.token);
+        save(USER_KEY, username);
+        form.reset();
+        showApp(username);
+      } catch {
+        errorBox.textContent = "Sem conexão com a API.";
+      } finally {
+        loginButton.disabled = false;
+      }
+    });
+
+    document.getElementById("logout-button").addEventListener("click", logout);
+
+    // ======================= BLOCOS POR ISSUE (JavaScript) =======================
+
+    // ===== #2 inicio: cadastro/edição web (B) =====
+    // ===== #2 fim =====
+
+    // ===== #3 inicio: listagem/exclusão web (C) =====
+    // ===== #3 fim =====
+
+    // ===== #4 inicio: busca web (C) =====
+    // ===== #4 fim =====
+
+    // ===== #5 inicio: exportação CSV web (A) =====
+    // ===== #5 fim =====
+
+    // ===== #6 inicio: dashboard web (A) =====
+    // ===== #6 fim =====
+
+    // ======================= INICIALIZAÇÃO =======================
+    // Ao abrir a página, reaproveita a sessão se o token ainda for válido.
+    (async function restoreSession() {
+      if (!load(TOKEN_KEY)) return showLogin();
+      try {
+        const response = await apiFetch("/me");
+        if (!response.ok) throw new Error("sessão inválida");
+        showApp(load(USER_KEY) || "");
+      } catch {
+        logout();
+      }
+    })();
+  </script>
+</body>
+</html>
