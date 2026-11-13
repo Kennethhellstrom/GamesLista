@@ -118,6 +118,60 @@ A cobertura exigida é de **100% das linhas** de `api.ts`, `db.ts` (e `cli.ts` q
 <!-- ===== #2 fim ===== -->
 
 <!-- ===== #3 inicio: listagem/exclusão web (C) ===== -->
+## #3 Listagem e exclusão
+
+Na aba **Listagem** (depois do login) os jogos aparecem em uma tabela com **4 campos visíveis** (título, plataforma, gênero e nota), **5 itens por página** e botões **Anterior/Próxima**. Os dados são carregados do banco ao abrir a página.
+
+- **Ordenação:** clique no cabeçalho de uma coluna (▲ crescente, ▼ decrescente; novo clique inverte).
+- **Seleção e exclusão:** marque os jogos nas caixas de seleção (a caixa do cabeçalho marca a página inteira) e use **Excluir selecionados**, que pede confirmação.
+- **Exclusão lógica:** excluir não apaga a linha; o jogo passa a `active = 0` e deixa de aparecer. Toda listagem, contagem ou busca deve considerar só `active = 1`.
+
+### Preparar dados (seed)
+
+O banco começa vazio. Para popular com **29 jogos** de exemplo (7 gêneros, 5 plataformas, anos de 2000 a 2024, notas de 3,5 a 9,8), ligue o seed:
+
+```bash
+# no .env (copie de .env.example) ou direto no comando:
+GAMESLIST_SEED=true docker compose up --build
+```
+
+O seed roda na inicialização da API e **não duplica**: se a tabela `games` já tiver linhas (inclusive as excluídas logicamente), nada é inserido. Por padrão (`GAMESLIST_SEED=false`) nenhum dado é criado. Para recomeçar do zero: `docker compose down -v`.
+
+### Endpoints
+
+Ambos exigem `Authorization: Bearer <token>` (sem token, **401**).
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/web/records?page=&page_size=&sort=&order=` | Página de jogos ativos: `{"items","page","page_size","total"}` |
+| DELETE | `/api/web/records/{id}` | Exclusão lógica: **204**; **404** se não existir ou já estiver excluído |
+
+Parâmetros do GET: `page` (padrão 1), `page_size` (padrão **5**, máximo 100), `sort` (`id` padrão, `title`, `platform`, `genre`, `rating`, `release_year`) e `order` (`asc` padrão ou `desc`). Valores inválidos respondem **400**. O campo de ordenação é escolhido de uma lista fixa em `db.ts`; o texto recebido nunca é inserido no SQL.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/web/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+curl -s "http://localhost:8080/api/web/records?page=2&sort=rating&order=desc" -H "Authorization: Bearer $TOKEN"
+curl -i -X DELETE http://localhost:8080/api/web/records/1 -H "Authorization: Bearer $TOKEN"   # 204
+curl -i -X DELETE http://localhost:8080/api/web/records/1 -H "Authorization: Bearer $TOKEN"   # 404 (já excluído)
+curl -i http://localhost:8080/api/web/records                                                 # 401
+```
+
+### Logs
+
+Cada requisição gera linhas `db` (`list_records`, `count_records`, `delete_record`) e `api` com o **mesmo `request_id`**. Consulte com `docker compose logs api`:
+
+```json
+{"timestamp":"2026-11-13T18:00:00.000Z","level":"INFO","layer":"db","client":"web","operation":"list_records","status":"success","request_id":"req-0b1d6c1e-7a52-4c1e-9a43-2f8e5d6a7b10","message":"Listagem de jogos concluída"}
+{"timestamp":"2026-11-13T18:00:00.004Z","level":"INFO","layer":"db","client":"web","operation":"count_records","status":"success","request_id":"req-0b1d6c1e-7a52-4c1e-9a43-2f8e5d6a7b10","message":"Contagem de jogos concluída"}
+{"timestamp":"2026-11-13T18:00:00.006Z","level":"INFO","layer":"api","client":"web","operation":"list_records","status":"success","request_id":"req-0b1d6c1e-7a52-4c1e-9a43-2f8e5d6a7b10","message":"Listagem devolvida (página 1)"}
+```
+
+### Testes
+
+`tests/listagem.db.test.ts` e `tests/listagem.api.test.ts` cobrem paginação (primeira, última, `page_size`), ordenação asc/desc, campo inválido, exclusão ok/404, 401 e seed idempotente. Execute com `docker compose run --rm tests`.
 <!-- ===== #3 fim ===== -->
 
 <!-- ===== #4 inicio: busca web (C) ===== -->
