@@ -24,6 +24,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-gamelist}:${POSTGRES_PASSWORD:-gamelist}@db:5432/${POSTGRES_DB:-gamelist}
       GAMESLIST_ADMIN_USER: ${GAMESLIST_ADMIN_USER:-admin}
       GAMESLIST_ADMIN_PASSWORD: ${GAMESLIST_ADMIN_PASSWORD:-admin123}
+      GAMESLIST_SEED: ${GAMESLIST_SEED:-false}
     depends_on:
       db:
         condition: service_healthy
