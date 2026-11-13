@@ -123,7 +123,52 @@
 
     <section id="tab-listagem" class="card" role="tabpanel" hidden>
       <!-- ===== #3 inicio: listagem/exclusão web (C) ===== -->
-      <p class="placeholder">Listagem de jogos: em breve (issue #3).</p>
+      <style>
+        .list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        .list-toolbar .count { color: var(--muted); font-size: .9rem; }
+        .table-wrap { overflow-x: auto; }
+        table.games { width: 100%; border-collapse: collapse; }
+        table.games th, table.games td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        table.games th { color: var(--muted); font-size: .85rem; font-weight: 600; white-space: nowrap; }
+        table.games th button.sort { padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+        table.games th button.sort:hover:not(:disabled) { background: transparent; color: var(--text); }
+        table.games th .arrow { display: inline-block; width: 1em; color: var(--accent); }
+        table.games td.num, table.games th.num { text-align: right; }
+        table.games input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+        table.games tr.selected td { background: rgba(124, 92, 255, .12); }
+        .sr-only { position: absolute; left: -9999px; }
+        .list-empty { margin: 16px 0; color: var(--muted); text-align: center; }
+        .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; color: var(--muted); }
+        button.danger { background: var(--danger); color: #1a0b10; }
+        button.danger:hover:not(:disabled) { background: #ff4d68; }
+      </style>
+      <div class="list-toolbar">
+        <span id="list-count" class="count" aria-live="polite"></span>
+        <button id="delete-selected" type="button" class="danger" disabled>Excluir selecionados</button>
+      </div>
+      <p id="list-error" class="error" role="alert" aria-live="polite"></p>
+      <div class="table-wrap">
+        <table class="games" aria-describedby="list-count">
+          <thead>
+            <tr>
+              <th scope="col"><input id="select-all" type="checkbox" aria-label="Selecionar todos da página"></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="title">Título <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="platform">Plataforma <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="genre">Gênero <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-sort="rating">Nota <span class="arrow" aria-hidden="true"></span></button></th>
+              <!-- Ponto de encaixe da #2: coluna das ações por linha (botão "Editar") -->
+              <th scope="col"><span class="sr-only">Ações</span></th>
+            </tr>
+          </thead>
+          <tbody id="games-body"></tbody>
+        </table>
+      </div>
+      <p id="list-empty" class="list-empty" hidden>Nenhum jogo cadastrado.</p>
+      <nav class="pager" aria-label="Paginação">
+        <button id="page-prev" type="button" class="secondary">Anterior</button>
+        <span id="page-info"></span>
+        <button id="page-next" type="button" class="secondary">Próxima</button>
+      </nav>
       <!-- ===== #3 fim ===== -->
     </section>
 
@@ -248,6 +293,151 @@
     // ===== #2 fim =====
 
     // ===== #3 inicio: listagem/exclusão web (C) =====
+    const LIST_PAGE_SIZE = 5;
+    const listState = { page: 1, sort: "title", order: "asc", total: 0, items: [], selected: new Set() };
+    const listBody = document.getElementById("games-body");
+    const listError = document.getElementById("list-error");
+    const deleteButton = document.getElementById("delete-selected");
+    const selectAll = document.getElementById("select-all");
+    const pagePrev = document.getElementById("page-prev");
+    const pageNext = document.getElementById("page-next");
+
+    function listLastPage() {
+      return Math.max(1, Math.ceil(listState.total / LIST_PAGE_SIZE));
+    }
+
+    function renderList() {
+      listBody.replaceChildren();
+      for (const game of listState.items) {
+        const row = document.createElement("tr");
+        row.dataset.id = String(game.id);
+        row.classList.toggle("selected", listState.selected.has(game.id));
+
+        const checkCell = document.createElement("td");
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = listState.selected.has(game.id);
+        check.setAttribute("aria-label", `Selecionar ${game.title}`);
+        check.addEventListener("change", () => {
+          if (check.checked) listState.selected.add(game.id);
+          else listState.selected.delete(game.id);
+          renderList();
+        });
+        checkCell.append(check);
+        row.append(checkCell);
+
+        // textContent (nunca innerHTML): títulos vindos do banco não executam HTML.
+        for (const field of ["title", "platform", "genre", "rating"]) {
+          const cell = document.createElement("td");
+          cell.textContent = field === "rating" ? Number(game.rating).toFixed(1) : game[field];
+          if (field === "rating") cell.className = "num";
+          row.append(cell);
+        }
+
+        // Ponto de encaixe da #2: a issue de edição adiciona aqui o botão "Editar" da linha.
+        const actions = document.createElement("td");
+        actions.className = "row-actions";
+        row.append(actions);
+
+        listBody.append(row);
+      }
+
+      const last = listLastPage();
+      document.getElementById("list-empty").hidden = listState.total > 0;
+      document.getElementById("list-count").textContent = `${listState.total} jogo(s)`;
+      document.getElementById("page-info").textContent = `Página ${listState.page} de ${last}`;
+      pagePrev.disabled = listState.page <= 1;
+      pageNext.disabled = listState.page >= last;
+      deleteButton.disabled = listState.selected.size === 0;
+      selectAll.checked = listState.items.length > 0 && listState.items.every((g) => listState.selected.has(g.id));
+
+      document.querySelectorAll("#tab-listagem [data-sort]").forEach((button) => {
+        const active = button.dataset.sort === listState.sort;
+        const ascending = listState.order === "asc";
+        button.querySelector(".arrow").textContent = active ? (ascending ? "▲" : "▼") : "";
+        button.closest("th").setAttribute("aria-sort", active ? (ascending ? "ascending" : "descending") : "none");
+      });
+    }
+
+    async function loadGames() {
+      listError.textContent = "";
+      const query = new URLSearchParams({
+        page: String(listState.page),
+        page_size: String(LIST_PAGE_SIZE),
+        sort: listState.sort,
+        order: listState.order,
+      });
+      try {
+        const response = await apiFetch(`/records?${query}`);
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error("falha ao listar");
+        const data = await response.json();
+        listState.total = data.total;
+        // Depois de excluir tudo da última página, volta para a nova última página.
+        if (data.items.length === 0 && listState.page > 1) {
+          listState.page = listLastPage();
+          return loadGames();
+        }
+        listState.items = data.items;
+        renderList();
+      } catch {
+        listError.textContent = "Não foi possível carregar os jogos.";
+      }
+    }
+
+    document.querySelectorAll("#tab-listagem [data-sort]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const field = button.dataset.sort;
+        if (listState.sort === field) listState.order = listState.order === "asc" ? "desc" : "asc";
+        else { listState.sort = field; listState.order = "asc"; }
+        listState.page = 1;
+        loadGames();
+      });
+    });
+
+    pagePrev.addEventListener("click", () => { listState.page -= 1; loadGames(); });
+    pageNext.addEventListener("click", () => { listState.page += 1; loadGames(); });
+
+    selectAll.addEventListener("change", () => {
+      for (const game of listState.items) {
+        if (selectAll.checked) listState.selected.add(game.id);
+        else listState.selected.delete(game.id);
+      }
+      renderList();
+    });
+
+    deleteButton.addEventListener("click", async () => {
+      const ids = [...listState.selected];
+      if (ids.length === 0) return;
+      if (!confirm(`Excluir ${ids.length} jogo(s) selecionado(s)?`)) return;
+      deleteButton.disabled = true;
+      listError.textContent = "";
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const response = await apiFetch(`/records/${id}`, { method: "DELETE" });
+          // 404 = já excluído por outro lugar: some da seleção do mesmo jeito.
+          if (response.status === 204 || response.status === 404) listState.selected.delete(id);
+          else failed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      await loadGames();
+      if (failed > 0) listError.textContent = `Não foi possível excluir ${failed} jogo(s).`;
+    });
+
+    // Carrega do banco quando a área logada aparece (login ou sessão restaurada) e ao abrir a aba.
+    // Ao sair (logout), limpa a seleção para a próxima sessão começar do zero.
+    new MutationObserver(() => {
+      if (appView.hidden) {
+        listState.selected.clear();
+        listState.page = 1;
+      } else {
+        loadGames();
+      }
+    }).observe(appView, { attributes: true, attributeFilter: ["hidden"] });
+    document.querySelector('[data-tab="listagem"]').addEventListener("click", loadGames);
     // ===== #3 fim =====
 
     // ===== #4 inicio: busca web (C) =====
