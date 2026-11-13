@@ -233,6 +233,7 @@ describe("start", () => {
       createPool: vi.fn(() => pool as never),
       initSchema: vi.fn(async () => undefined),
       seedAdminUser: vi.fn(async () => undefined),
+      seedGames: vi.fn(async () => 0),
     };
     const server = await start(
       { DATABASE_URL: "postgres://x", GAMESLIST_ADMIN_USER: "admin", GAMESLIST_ADMIN_PASSWORD: "p", PORT: "0" },

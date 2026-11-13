@@ -8,9 +8,14 @@ import {
   type Queryable,
   createPool,
   initSchema,
+  isSortField,
   log,
   seedAdminUser,
+  seedGames,
   webCheckCredentials,
+  webCountRecords,
+  webDeleteRecord,
+  webListRecords,
 } from "./db.js";
 
 // ===========================================================================
@@ -175,6 +180,68 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #2 fim =====
 
   // ===== #3 inicio: listagem/exclusão web (C) =====
+
+  const DEFAULT_PAGE_SIZE = 5;
+  const MAX_PAGE_SIZE = 100;
+
+  /** Lê um inteiro positivo da query/rota; `undefined` usa o padrão e `null` indica valor inválido. */
+  const positiveInt = (value: unknown, fallback: number): number | null => {
+    if (value === undefined) return fallback;
+    if (typeof value !== "string" || !/^[1-9]\d{0,8}$/.test(value)) return null;
+    return Number(value);
+  };
+
+  app.get("/api/web/records", auth, async (req: Request, res: Response) => {
+    const page = positiveInt(req.query.page, 1);
+    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
+    const sort = req.query.sort ?? "id";
+    const order = req.query.order ?? "asc";
+    if (
+      page === null ||
+      pageSize === null ||
+      pageSize > MAX_PAGE_SIZE ||
+      !isSortField(sort) ||
+      (order !== "asc" && order !== "desc")
+    ) {
+      apiLog(res, "web", "WARN", "list_records", "Parâmetros de listagem inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const requestId = requestIdOf(res);
+      const items = await webListRecords(db, { page, pageSize, sort, order }, "web", requestId);
+      const total = await webCountRecords(db, "web", requestId);
+      apiLog(res, "web", "INFO", "list_records", `Listagem devolvida (página ${page})`);
+      res.status(200).json({ items, page, page_size: pageSize, total });
+    } catch {
+      apiLog(res, "web", "ERROR", "list_records", "Erro interno ao listar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
+  // Exclusão lógica: o jogo passa a inativo; id inexistente ou já excluído responde 404.
+  app.delete("/api/web/records/:id", auth, async (req: Request, res: Response) => {
+    const id = positiveInt(req.params.id, 0);
+    if (id === null || id === 0) {
+      apiLog(res, "web", "WARN", "delete_record", "Identificador inválido");
+      res.status(404).json({ error: "Jogo não encontrado" });
+      return;
+    }
+    try {
+      const deleted = await webDeleteRecord(db, id, "web", requestIdOf(res));
+      if (!deleted) {
+        apiLog(res, "web", "WARN", "delete_record", "Jogo não encontrado");
+        res.status(404).json({ error: "Jogo não encontrado" });
+        return;
+      }
+      apiLog(res, "web", "INFO", "delete_record", "Jogo excluído");
+      res.status(204).end();
+    } catch {
+      apiLog(res, "web", "ERROR", "delete_record", "Erro interno ao excluir jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #3 fim =====
 
   // ===== #4 inicio: busca web (C) =====
@@ -223,15 +290,18 @@ export interface StartDeps {
   createPool: typeof createPool;
   initSchema: typeof initSchema;
   seedAdminUser: typeof seedAdminUser;
+  seedGames: typeof seedGames;
 }
 
-const defaultDeps: StartDeps = { createPool, initSchema, seedAdminUser };
+const defaultDeps: StartDeps = { createPool, initSchema, seedAdminUser, seedGames };
 
 export async function start(env: NodeJS.ProcessEnv, deps: StartDeps = defaultDeps): Promise<Server> {
   const config = loadConfig(env);
   const pool = deps.createPool(config.databaseUrl);
   await deps.initSchema(pool, "web", "startup");
   await deps.seedAdminUser(pool, config.adminUser, config.adminPassword, "web", "startup");
+  // #3: jogos de exemplo só com GAMESLIST_SEED=true (e só se a tabela estiver vazia).
+  if (env.GAMESLIST_SEED === "true") await deps.seedGames(pool, "web", "startup");
   const app = createApp(pool);
   return new Promise((resolve) => {
     const server = app.listen(config.port, () => {
