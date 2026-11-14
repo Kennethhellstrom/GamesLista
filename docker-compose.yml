@@ -19,6 +19,11 @@ services:
     init: true
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/web/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
     environment:
       PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER:-gamelist}:${POSTGRES_PASSWORD:-gamelist}@db:5432/${POSTGRES_DB:-gamelist}
@@ -37,6 +42,9 @@ services:
     environment:
       GAMESLIST_API_URL: ${GAMESLIST_API_URL:-http://api:8080}
       GAMESLIST_TOKEN: ${GAMESLIST_TOKEN:-}
+    depends_on:
+      api:
+        condition: service_healthy
 
   # Testes unitários + cobertura: `docker compose run --rm tests`
   tests:

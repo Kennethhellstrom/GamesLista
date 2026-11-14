@@ -14,10 +14,7 @@ function printHelp(output: Output): void {
       "Commands:",
       "  help                          Show this help",
       "  health                        Check API availability",
-      "  token --user U --password P   Obtain an API token",
-      "",
-      "Options:",
-      "  --token TOKEN                 Authenticate a command",
+      "  token --token TOKEN   Obtain an API token",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
@@ -60,10 +57,6 @@ function reportHttpFailure(
     output("Error: Invalid username or password (401).");
     return;
   }
-  if (status === 401) {
-    output("Error: Unauthorized (401). Supply a valid token with --token or GAMESLIST_TOKEN.");
-    return;
-  }
 
   output(`Error: ${operation} request failed with HTTP ${status}.`);
 }
@@ -96,24 +89,17 @@ export async function run(
   }
 
   if (command === "health") {
-    let options: Map<string, string>;
     try {
-      options = parseOptions(args.slice(1), ["--token"]);
+      parseOptions(args.slice(1), []);
     } catch (error) {
       output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
       return 1;
     }
 
-    const token = options.get("--token") || env.GAMESLIST_TOKEN;
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
     const response = await request(
       fetchFn,
       `${apiUrl(env)}/api/cli/health`,
-      { method: "GET", headers },
+      { method: "GET" },
       output,
     );
     if (!response) {

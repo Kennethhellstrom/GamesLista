@@ -131,6 +131,10 @@ A cobertura exigida é de **100% das linhas** de `api.ts`, `db.ts` (e `cli.ts` q
 <!-- ===== #6 fim ===== -->
 
 <!-- ===== #7 inicio: estrutura CLI (B) ===== -->
+## #7 CLI: healthcheck
+
+Execute `docker compose run --rm cli health` para verificar a API. O Compose inicia o serviço `api` e aguarda o healthcheck antes de executar a CLI.
+
 <!-- ===== #7 fim ===== -->
 
 <!-- ===== #8 inicio: cadastro/edição CLI (A) ===== -->

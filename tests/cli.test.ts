@@ -35,7 +35,7 @@ describe("CLI", () => {
     }
   });
 
-  it("calls the health endpoint and sends a token from the environment", async () => {
+  it("calls the public health endpoint without sending an environment token", async () => {
     const fetchFn = vi.fn().mockResolvedValue(response(200));
     const output = vi.fn();
 
@@ -48,32 +48,24 @@ describe("CLI", () => {
 
     expect(fetchFn).toHaveBeenCalledWith("https://example.test/api/cli/health", {
       method: "GET",
-      headers: { Authorization: "Bearer env-token" },
     });
     expect(output).toHaveBeenCalledWith("API is healthy (HTTP 200).");
   });
 
-  it("prefers an explicit health token over the environment token", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(response(200));
+  it("rejects health options", async () => {
+    const output = vi.fn();
 
-    await run(["health", "--token", "cli-token"], fetchFn, vi.fn(), {
-      GAMESLIST_TOKEN: "env-token",
-    });
-
-    expect(fetchFn.mock.calls[0][1]?.headers).toEqual({
-      Authorization: "Bearer cli-token",
-    });
+    await expect(run(["health", "--token", "cli-token"], vi.fn(), output, {})).resolves.toBe(1);
+    expect(output).toHaveBeenCalledWith("Error: Unknown option: --token");
   });
 
-  it("reports unauthorized health requests with a non-zero code", async () => {
+  it("reports unauthorized health responses without suggesting a token", async () => {
     const output = vi.fn();
 
     await expect(run(["health"], vi.fn().mockResolvedValue(response(401)), output, {})).resolves.toBe(
       1,
     );
-    expect(output).toHaveBeenCalledWith(
-      "Error: Unauthorized (401). Supply a valid token with --token or GAMESLIST_TOKEN.",
-    );
+    expect(output).toHaveBeenCalledWith("Error: health request failed with HTTP 401.");
   });
 
   it("reports other health errors", async () => {
