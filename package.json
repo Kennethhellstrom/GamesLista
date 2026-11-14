@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node --import tsx api.ts",
+    "cli": "node --import tsx cli.ts",
     "typecheck": "tsc",
     "test": "vitest run",
     "coverage": "vitest run --coverage"

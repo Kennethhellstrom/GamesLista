@@ -5,10 +5,10 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",
-      // Código de produção coberto: API, banco e (a partir da #7) CLI.
+      // Código de produção coberto: API, banco e CLI.
       include: ["api.ts", "db.ts", "cli.ts"],
       reporter: ["text"],
-      thresholds: { lines: 100 },
+      thresholds: { lines: 100, perFile: true },
     },
   },
 });

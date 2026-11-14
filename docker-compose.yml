@@ -28,6 +28,16 @@ services:
       db:
         condition: service_healthy
 
+  # CLI: `docker compose run --rm cli help`
+  cli:
+    build: .
+    profiles: ["cli"]
+    entrypoint: ["node", "--import", "tsx", "cli.ts"]
+    command: ["help"]
+    environment:
+      GAMESLIST_API_URL: ${GAMESLIST_API_URL:-http://api:8080}
+      GAMESLIST_TOKEN: ${GAMESLIST_TOKEN:-}
+
   # Testes unitários + cobertura: `docker compose run --rm tests`
   tests:
     build: .
