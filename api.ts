@@ -10,14 +10,11 @@ import {
   isSortField,
   log,
   seedAdminUser,
-<<<<<<< HEAD
-=======
   seedGames,
   webCheckCredentials,
   webCountRecords,
   webDeleteRecord,
   webListRecords,
->>>>>>> upstream/main
 } from "./db.js";
 
 export { apiLog, requireAuth, requestIdOf, TokenStore } from "./api.handler.js";
