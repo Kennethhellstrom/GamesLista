@@ -11,7 +11,8 @@ Lista de jogos com **Web + CLI** sobre a mesma API REST e o mesmo banco (trabalh
 | Papel | Arquivo |
 |---|---|
 | Web | `index.html` (HTML, CSS e JavaScript embutidos) |
-| API | `api.ts` |
+| API / rotas | `api.ts` |
+| Handlers da API | `api.handler.ts` |
 | Banco (inclui o `Logger`) | `db.ts` |
 | CLI | `cli.ts` (entra na issue #7) |
 | Documentação | `README.md` (uma seção por issue) |
