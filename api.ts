@@ -78,7 +78,7 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   });
 
   // Healthcheck público: não acessa o banco.
-  app.get("/api/web/health", handlers.webHealth);
+  app.get("/api/web/health", handlers.health("web"));
   app.post("/api/web/login", handlers.webLogin);
 
   // Rota protegida: a página inicial usa para validar a sessão ao abrir.
@@ -102,6 +102,7 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #6 fim =====
 
   // ===== #7 inicio: estrutura CLI (B) =====
+  app.get("/api/cli/health", handlers.health("cli"));
   // ===== #7 fim =====
 
   // ===== #8 inicio: cadastro/edição CLI (A) =====

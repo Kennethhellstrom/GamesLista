@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type StartDeps, TokenStore, createApp, loadConfig, start } from "../api.js";
+import { run } from "../cli.js";
 import { type Queryable, hashPassword } from "../db.js";
 
 let output: string[] = [];
@@ -59,15 +60,40 @@ describe("GET / (Web)", () => {
   });
 });
 
-describe("GET /api/web/health", () => {
-  it("responde 200 sem autenticação e sem acessar o banco", async () => {
+describe.each(["web", "cli"] as const)("GET /api/%s/health", (client) => {
+  it.each([undefined, "Bearer token-invalido"])(
+    "responde 200 sem acessar o banco com Authorization %s",
+    async (authorization) => {
+      const db = dbWithUser();
+      const base = await listen(db);
+      const response = await fetch(`${base}/api/${client}/health`, {
+        headers: authorization ? { Authorization: authorization } : {},
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ status: "ok" });
+      expect(db.query).not.toHaveBeenCalled();
+      expect(response.headers.get("x-request-id")).toMatch(/^req-[0-9a-f-]{36}$/);
+      expect(logs()[0]).toMatchObject({
+        layer: "api",
+        client,
+        operation: "health",
+        status: "success",
+        request_id: response.headers.get("x-request-id"),
+      });
+    },
+  );
+});
+
+describe("CLI health integrado à API", () => {
+  it("consulta a rota real e informa sucesso", async () => {
     const db = dbWithUser();
     const base = await listen(db);
-    const response = await fetch(`${base}/api/web/health`);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
+    const cliOutput = vi.fn();
+
+    await expect(run(["health"], fetch, cliOutput, { GAMESLIST_API_URL: base })).resolves.toBe(0);
+    expect(cliOutput).toHaveBeenCalledWith("API is healthy (HTTP 200).");
     expect(db.query).not.toHaveBeenCalled();
-    expect(logs()[0]).toMatchObject({ layer: "api", client: "web", operation: "health", status: "success" });
+    expect(logs()[0]).toMatchObject({ layer: "api", client: "cli", operation: "health", status: "success" });
   });
 });
 

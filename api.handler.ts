@@ -60,15 +60,15 @@ export function requireAuth(tokens: TokenStore) {
 }
 
 export interface ApiHandlers {
-  webHealth: RequestHandler;
+  health: (client: ClientKind) => RequestHandler;
   webLogin: RequestHandler;
   webMe: RequestHandler;
 }
 
 export function createApiHandlers(db: Queryable, tokens: TokenStore): ApiHandlers {
   return {
-    webHealth: (_req, res) => {
-      apiLog(res, "web", "INFO", "health", "Healthcheck respondido");
+    health: (client) => (_req, res) => {
+      apiLog(res, client, "INFO", "health", "Healthcheck respondido");
       res.status(200).json({ status: "ok" });
     },
 
