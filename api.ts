@@ -103,6 +103,7 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
 
   // ===== #7 inicio: estrutura CLI (B) =====
   app.get("/api/cli/health", handlers.health("cli"));
+  app.post("/api/cli/token", handlers.cliToken);
   // ===== #7 fim =====
 
   // ===== #8 inicio: cadastro/edição CLI (A) =====

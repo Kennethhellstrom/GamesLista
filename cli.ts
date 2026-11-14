@@ -14,7 +14,7 @@ function printHelp(output: Output): void {
       "Commands:",
       "  help                          Show this help",
       "  health                        Check API availability",
-      "  token --token TOKEN   Obtain an API token",
+      "  token [--token TOKEN]   Validate a token",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
@@ -54,7 +54,7 @@ function reportHttpFailure(
   output: Output,
 ): void {
   if (status === 401 && operation === "token") {
-    output("Error: Invalid username or password (401).");
+    output("Error: Token not provided or invalid (401).");
     return;
   }
 
@@ -117,18 +117,13 @@ export async function run(
   if (command === "token") {
     let options: Map<string, string>;
     try {
-      options = parseOptions(args.slice(1), ["--user", "--password"]);
+      options = parseOptions(args.slice(1), ["--token"]);
     } catch (error) {
       output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
       return 1;
     }
 
-    const user = options.get("--user");
-    const password = options.get("--password");
-    if (!user || !password) {
-      output("Error: token requires both --user and --password.");
-      return 1;
-    }
+    const token = options.get("--token");
 
     const response = await request(
       fetchFn,
@@ -136,7 +131,7 @@ export async function run(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user, password }),
+        body: JSON.stringify(token ? { token } : {}),
       },
       output,
     );
@@ -148,25 +143,7 @@ export async function run(
       return 1;
     }
 
-    let result: unknown;
-    try {
-      result = await response.json();
-    } catch {
-      output("Error: API returned an invalid token response.");
-      return 1;
-    }
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      !("token" in result) ||
-      typeof result.token !== "string" ||
-      !result.token
-    ) {
-      output("Error: API returned an invalid token response.");
-      return 1;
-    }
-
-    output(result.token);
+    output(`Token válido (HTTP ${response.status}).`);
     return 0;
   }
 

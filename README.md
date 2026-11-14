@@ -135,6 +135,10 @@ A cobertura exigida é de **100% das linhas** de `api.ts`, `db.ts` (e `cli.ts` q
 
 Execute `docker compose run --rm cli health` para verificar a API. O Compose inicia o serviço `api` e aguarda o healthcheck antes de executar a CLI.
 
+## #7 CLI: validar token
+
+Execute `docker compose run --rm cli token --token <token>` para validar um token emitido pela API. O comando envia `{"token":"..."}` para `POST /api/cli/token`: um token presente no `TokenStore` recebe HTTP 200 e a mensagem `Token válido`; um token ausente ou desconhecido recebe HTTP 401.
+
 <!-- ===== #7 fim ===== -->
 
 <!-- ===== #8 inicio: cadastro/edição CLI (A) ===== -->

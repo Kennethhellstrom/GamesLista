@@ -84,19 +84,19 @@ describe("CLI", () => {
     expect(output).toHaveBeenCalledWith("Error: Unknown option: --bad");
   });
 
-  it("rejects a health token option without a value", async () => {
+  it("rejects a token option for health", async () => {
     const output = vi.fn();
 
     await expect(run(["health", "--token"], vi.fn(), output, {})).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: Option --token requires a value.");
+    expect(output).toHaveBeenCalledWith("Error: Unknown option: --token");
   });
 
-  it("obtains and prints a token", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(response(200, { token: "issued-token" }));
+  it("validates a provided token", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(response(200, { message: "Token válido" }));
     const output = vi.fn();
 
     await expect(
-      run(["token", "--user", "alice", "--password", "secret"], fetchFn, output, {
+      run(["token", "--token", "issued-token"], fetchFn, output, {
         GAMESLIST_API_URL: "http://api:8080/",
       }),
     ).resolves.toBe(0);
@@ -104,82 +104,49 @@ describe("CLI", () => {
     expect(fetchFn).toHaveBeenCalledWith("http://api:8080/api/cli/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: "alice", password: "secret" }),
+      body: JSON.stringify({ token: "issued-token" }),
     });
-    expect(output).toHaveBeenCalledWith("issued-token");
+    expect(output).toHaveBeenCalledWith("Token válido (HTTP 200).");
   });
 
-  it("reports invalid credentials", async () => {
+  it("submits a missing token and reports unauthorized", async () => {
     const output = vi.fn();
+    const fetchFn = vi.fn().mockResolvedValue(response(401));
 
     await expect(
-      run(
-        ["token", "--user", "alice", "--password", "wrong"],
-        vi.fn().mockResolvedValue(response(401)),
-        output,
-        {},
-      ),
+      run(["token"], fetchFn, output, {}),
     ).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: Invalid username or password (401).");
+    expect(fetchFn).toHaveBeenCalledWith("http://api:8080/api/cli/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(output).toHaveBeenCalledWith("Error: Token not provided or invalid (401).");
   });
 
   it("reports other token endpoint errors", async () => {
     const output = vi.fn();
 
     await expect(
-      run(
-        ["token", "--user", "alice", "--password", "secret"],
-        vi.fn().mockResolvedValue(response(500)),
-        output,
-        {},
-      ),
+      run(["token", "--token", "issued-token"], vi.fn().mockResolvedValue(response(500)), output, {}),
     ).resolves.toBe(1);
     expect(output).toHaveBeenCalledWith("Error: token request failed with HTTP 500.");
   });
 
-  it("requires both token credentials", async () => {
-    const output = vi.fn();
-
-    await expect(run(["token", "--user", "alice"], vi.fn(), output, {})).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: token requires both --user and --password.");
-  });
-
-  it("rejects invalid token options", async () => {
+  it("rejects unknown token options", async () => {
     const output = vi.fn();
 
     await expect(
-      run(["token", "--user", "alice", "--password"], vi.fn(), output, {}),
+      run(["token", "--bad"], vi.fn(), output, {}),
     ).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: Option --password requires a value.");
+    expect(output).toHaveBeenCalledWith("Error: Unknown option: --bad");
   });
 
-  it("rejects token responses without a token", async () => {
+  it("rejects a token option without a value", async () => {
     const output = vi.fn();
 
-    await expect(
-      run(
-        ["token", "--user", "alice", "--password", "secret"],
-        vi.fn().mockResolvedValue(response(200, {})),
-        output,
-        {},
-      ),
-    ).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: API returned an invalid token response.");
-  });
-
-  it("rejects malformed token JSON", async () => {
-    const output = vi.fn();
-    const invalidJson = new Response("not-json", { status: 200 });
-
-    await expect(
-      run(
-        ["token", "--user", "alice", "--password", "secret"],
-        vi.fn().mockResolvedValue(invalidJson),
-        output,
-        {},
-      ),
-    ).resolves.toBe(1);
-    expect(output).toHaveBeenCalledWith("Error: API returned an invalid token response.");
+    await expect(run(["token", "--token"], vi.fn(), output, {})).resolves.toBe(1);
+    expect(output).toHaveBeenCalledWith("Error: Option --token requires a value.");
   });
 
   it("reports API connection errors", async () => {
@@ -196,7 +163,7 @@ describe("CLI", () => {
 
     await expect(
       run(
-        ["token", "--user", "alice", "--password", "secret"],
+        ["token", "--token", "issued-token"],
         vi.fn().mockRejectedValue(new Error("offline")),
         output,
         {},

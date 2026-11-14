@@ -61,6 +61,7 @@ export function requireAuth(tokens: TokenStore) {
 
 export interface ApiHandlers {
   health: (client: ClientKind) => RequestHandler;
+  cliToken: RequestHandler;
   webLogin: RequestHandler;
   webMe: RequestHandler;
 }
@@ -70,6 +71,24 @@ export function createApiHandlers(db: Queryable, tokens: TokenStore): ApiHandler
     health: (client) => (_req, res) => {
       apiLog(res, client, "INFO", "health", "Healthcheck respondido");
       res.status(200).json({ status: "ok" });
+    },
+
+    cliToken: (req, res) => {
+      const { token } = (req.body ?? {}) as { token?: unknown };
+      if (typeof token !== "string" || token.length === 0) {
+        apiLog(res, "cli", "WARN", "token", "Token ausente");
+        res.status(401).json({ error: "Token não informado" });
+        return;
+      }
+
+      if (!tokens.validate(token)) {
+        apiLog(res, "cli", "WARN", "token", "Token inválido");
+        res.status(401).json({ error: "Token inválido" });
+        return;
+      }
+
+      apiLog(res, "cli", "INFO", "token", "Token informado");
+      res.status(200).json({ message: "Token válido" });
     },
 
     webLogin: async (req, res) => {

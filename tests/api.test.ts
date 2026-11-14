@@ -97,6 +97,64 @@ describe("CLI health integrado à API", () => {
   });
 });
 
+describe("POST /api/cli/token", () => {
+  it.each([undefined, {}, { token: "" }])(
+    "responde 401 quando token está ausente: %j",
+    async (body) => {
+      const base = await listen(dbWithUser());
+      const response = body === undefined
+        ? await fetch(`${base}/api/cli/token`, { method: "POST" })
+        : await postJson(`${base}/api/cli/token`, body);
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "Token não informado" });
+      expect(logs().find((entry) => entry.operation === "token")).toMatchObject({
+        layer: "api",
+        client: "cli",
+        level: "WARN",
+        status: "error",
+      });
+    },
+  );
+
+  it("responde 401 quando token informado não existe no TokenStore", async () => {
+    const db = dbWithUser();
+    const tokens = new TokenStore();
+    const base = await listen(db, tokens);
+    const response = await postJson(`${base}/api/cli/token`, { token: "valor-qualquer" });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Token inválido" });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(logs().find((entry) => entry.operation === "token")).toMatchObject({
+      layer: "api",
+      client: "cli",
+      level: "WARN",
+      status: "error",
+    });
+    expect(output.join("")).not.toContain("valor-qualquer");
+  });
+
+  it("responde 200 quando token pertence ao TokenStore", async () => {
+    const db = dbWithUser();
+    const tokens = new TokenStore();
+    const token = tokens.issue("cli");
+    const base = await listen(db, tokens);
+    const response = await postJson(`${base}/api/cli/token`, { token });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ message: "Token válido" });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(logs().find((entry) => entry.operation === "token")).toMatchObject({
+      layer: "api",
+      client: "cli",
+      level: "INFO",
+      status: "success",
+    });
+    expect(output.join("")).not.toContain(token);
+  });
+});
+
 describe("POST /api/web/login", () => {
   it("autentica o usuário e devolve um token que a API reconhece", async () => {
     const tokens = new TokenStore();
