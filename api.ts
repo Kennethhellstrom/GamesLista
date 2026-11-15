@@ -12,8 +12,10 @@ import {
   seedAdminUser,
   seedGames,
   webCountRecords,
+  webCountSearchRecords,
   webDeleteRecord,
   webListRecords,
+  webSearchRecords,
 } from "./db.js";
 
 export { type Session, TokenStore, apiLog, requestIdOf, requireAuth } from "./api.handler.js";
@@ -160,6 +162,70 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #3 fim =====
 
   // ===== #4 inicio: busca web (C) =====
+
+  const MAX_TEXT_FILTER = 100;
+
+  /** Filtro de texto: ausente ou vazio vira `undefined`; repetido ou longo demais vira `null` (inválido). */
+  const textFilter = (value: unknown): string | undefined | null => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || value.length > MAX_TEXT_FILTER) return null;
+    return value.trim() || undefined;
+  };
+
+  /** Filtro de ano: inteiro positivo; ausente ou vazio vira `undefined` e valor inválido vira `null`. */
+  const yearFilter = (value: unknown): number | undefined | null =>
+    value === undefined || value === "" ? undefined : positiveInt(value, 0);
+
+  /** Nota mínima: decimal de 0 a 10 (ex.: 8 ou 8.5); ausente ou vazia vira `undefined`, inválida vira `null`. */
+  const ratingFilter = (value: unknown): number | undefined | null => {
+    if (value === undefined || value === "") return undefined;
+    if (typeof value !== "string" || !/^\d{1,2}(\.\d{1,2})?$/.test(value)) return null;
+    const rating = Number(value);
+    return rating <= 10 ? rating : null;
+  };
+
+  // Mesmo formato de resposta da listagem; só devolve jogos ativos que atendem a TODOS os filtros enviados.
+  app.get("/api/web/records/search", auth, async (req: Request, res: Response) => {
+    const page = positiveInt(req.query.page, 1);
+    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
+    const sort = req.query.sort ?? "id";
+    const order = req.query.order ?? "asc";
+    const q = textFilter(req.query.q);
+    const platform = textFilter(req.query.platform);
+    const genre = textFilter(req.query.genre);
+    const yearMin = yearFilter(req.query.year_min);
+    const yearMax = yearFilter(req.query.year_max);
+    const ratingMin = ratingFilter(req.query.rating_min);
+    if (
+      page === null ||
+      pageSize === null ||
+      pageSize > MAX_PAGE_SIZE ||
+      !isSortField(sort) ||
+      (order !== "asc" && order !== "desc") ||
+      q === null ||
+      platform === null ||
+      genre === null ||
+      yearMin === null ||
+      yearMax === null ||
+      ratingMin === null
+    ) {
+      apiLog(res, "web", "WARN", "search_records", "Parâmetros de busca inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const requestId = requestIdOf(res);
+      const filters = { q, platform, genre, yearMin, yearMax, ratingMin };
+      const items = await webSearchRecords(db, { ...filters, page, pageSize, sort, order }, "web", requestId);
+      const total = await webCountSearchRecords(db, filters, "web", requestId);
+      apiLog(res, "web", "INFO", "search_records", `Busca devolvida (página ${page})`);
+      res.status(200).json({ items, page, page_size: pageSize, total });
+    } catch {
+      apiLog(res, "web", "ERROR", "search_records", "Erro interno ao buscar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #4 fim =====
 
   // ===== #5 inicio: exportação CSV web (A) =====
