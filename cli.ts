@@ -19,6 +19,9 @@ function printHelp(output: Output): void {
       "                                Create a game (requires GAMESLIST_TOKEN)",
       "  edit <id> --title T --platform P --genre G --year Y --rating R [--notes N]",
       "                                Edit a game, replacing all fields (requires GAMESLIST_TOKEN)",
+      "  list [--page N] [--page-size N] [--sort FIELD] [--order asc|desc]",
+      "                                List games, paginated (requires GAMESLIST_TOKEN)",
+      "  delete <id>                   Delete a game (requires GAMESLIST_TOKEN)",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
@@ -247,6 +250,92 @@ export async function run(
   }
   // ===== #8 fim =====
   // ===== #9 inicio =====
+  if (command === "list" || command === "delete") {
+    const listing = command === "list";
+    const id = listing ? undefined : args[1];
+    if (!listing && (!id || !/^[1-9]\d*$/.test(id))) {
+      output("Error: Informe o id numérico do jogo: gameslista delete <id>");
+      return 1;
+    }
+
+    let options: Map<string, string>;
+    try {
+      options = parseOptions(
+        args.slice(listing ? 1 : 2),
+        listing ? ["--page", "--page-size", "--sort", "--order"] : [],
+      );
+    } catch (error) {
+      output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
+      return 1;
+    }
+
+    const token = env.GAMESLIST_TOKEN;
+    if (!token) {
+      output("Error: Defina GAMESLIST_TOKEN com o token obtido no login.");
+      return 1;
+    }
+
+    // --page-size vira page_size; a validação dos valores é feita pela API.
+    const query = new URLSearchParams();
+    for (const [flag, value] of options) {
+      query.set(flag.slice(2).replace("-", "_"), value);
+    }
+    const queryString = query.toString();
+    const path = listing ? `/api/cli/records${queryString ? `?${queryString}` : ""}` : `/api/cli/records/${id}`;
+
+    const response = await request(
+      fetchFn,
+      `${apiUrl(env)}${path}`,
+      { method: listing ? "GET" : "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      output,
+    );
+    if (!response) {
+      return 1;
+    }
+    if (response.status === 401) {
+      output("Error: Token ausente ou inválido (401). Faça login e atualize GAMESLIST_TOKEN.");
+      return 1;
+    }
+    if (response.status === 400) {
+      output(
+        "Error: Parâmetros inválidos (400). Use --page e --page-size (1 a 100) com números inteiros, " +
+          "--sort (id, title, platform, genre, rating, release_year) e --order (asc, desc).",
+      );
+      return 1;
+    }
+    if (response.status === 404) {
+      output(`Error: Jogo ${id} não encontrado (404).`);
+      return 1;
+    }
+    if (!response.ok) {
+      output(`Error: ${command} request failed with HTTP ${response.status}.`);
+      return 1;
+    }
+
+    if (!listing) {
+      output(`Jogo ${id} excluído (HTTP ${response.status}).`);
+      return 0;
+    }
+
+    const data = (await response.json()) as {
+      items: { id: number; title: string; platform: string; genre: string; release_year: number; rating: number; notes: string | null }[];
+      page: number;
+      page_size: number;
+      total: number;
+    };
+    const pages = Math.max(1, Math.ceil(data.total / data.page_size));
+    output(`Jogos (página ${data.page} de ${pages}, ${data.total} no total):`);
+    if (data.items.length === 0) {
+      output("Nenhum jogo nesta página.");
+    }
+    for (const game of data.items) {
+      const notes = game.notes ? ` | ${game.notes}` : "";
+      output(
+        `#${game.id} ${game.title} | ${game.platform} | ${game.genre} | ${game.release_year} | nota ${game.rating}${notes}`,
+      );
+    }
+    return 0;
+  }
   // ===== #9 fim =====
   // ===== #10 inicio =====
   // ===== #10 fim =====
