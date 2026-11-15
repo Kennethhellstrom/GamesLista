@@ -529,6 +529,54 @@ export async function webCountSearchRecords(
 // ===== #7 fim =====
 
 // ===== #8 inicio: cadastro/edição CLI (A) =====
+
+/** Cadastra um jogo vindo da CLI (SQL próprio, sem chamar os métodos `web...`) e devolve a linha criada. */
+export async function cliInsertRecord(
+  db: Queryable,
+  record: GameRecordInput,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_insert_record",
+    "Jogo cadastrado pela CLI",
+    `INSERT INTO games (title, platform, genre, release_year, rating, notes)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, title, platform, genre, release_year, rating, notes`,
+    [record.title, record.platform, record.genre, record.release_year, record.rating, record.notes],
+  );
+  return rows[0] as GameRecord;
+}
+
+/**
+ * Edita um jogo ativo vindo da CLI, substituindo todos os campos (SQL próprio).
+ * Devolve `null` quando o id não existe ou o jogo foi excluído logicamente.
+ */
+export async function cliUpdateRecord(
+  db: Queryable,
+  id: number,
+  record: GameRecordInput,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord | null> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_update_record",
+    "Edição de jogo pela CLI concluída",
+    `UPDATE games
+        SET title = $2, platform = $3, genre = $4, release_year = $5, rating = $6, notes = $7
+      WHERE id = $1 AND active = 1
+      RETURNING id, title, platform, genre, release_year, rating, notes`,
+    [id, record.title, record.platform, record.genre, record.release_year, record.rating, record.notes],
+  );
+  return (rows[0] as GameRecord | undefined) ?? null;
+}
+
 // ===== #8 fim =====
 
 // ===== #9 inicio: listagem/exclusão CLI (C) =====
