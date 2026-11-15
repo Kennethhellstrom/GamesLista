@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type StartDeps, TokenStore, createApp, loadConfig, start } from "../api.js";
+import { run } from "../cli.js";
 import { type Queryable, hashPassword } from "../db.js";
 
 let output: string[] = [];
@@ -176,6 +177,75 @@ describe("GET /api/web/me (rota protegida)", () => {
     const response = await fetch(`${base}/api/web/me`, { headers: { Authorization: `Bearer ${token}` } });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ client: "web" });
+  });
+});
+
+describe("Endpoints CLI", () => {
+  it("responde ao health público sem consultar o banco e identifica o cliente no log", async () => {
+    const db = dbWithUser();
+    const base = await listen(db);
+    const response = await fetch(`${base}/api/cli/health`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(logs()).toContainEqual(expect.objectContaining({
+      client: "cli",
+      operation: "health",
+      status: "success",
+      request_id: response.headers.get("x-request-id"),
+    }));
+  });
+
+  it("valida pela CLI um token emitido pelo login Web", async () => {
+    const base = await listen(dbWithUser());
+    const login = await postJson(`${base}/api/web/login`, { username: "admin", password: "senha-forte" });
+    expect(login.status).toBe(200);
+    const { token } = (await login.json()) as { token: string };
+    const response = await postJson(`${base}/api/cli/token`, { token });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ message: "Token válido" });
+    const output = vi.fn();
+
+    expect(await run(["token", "--token", token], fetch, output, { GAMESLIST_API_URL: base })).toBe(0);
+    expect(output).toHaveBeenCalledWith("Token válido (HTTP 200).");
+    const tokenLog = logs().find((entry) => entry.client === "cli" && entry.operation === "token");
+    expect(tokenLog).toMatchObject({
+      level: "INFO",
+      status: "success",
+      request_id: response.headers.get("x-request-id"),
+    });
+    expect(output.mock.calls.flat().join("")).not.toContain(token);
+    expect(logs().map((entry) => JSON.stringify(entry)).join("")).not.toContain(token);
+  });
+
+  it.each([
+    [{}, "Token não informado"],
+    [{ token: "" }, "Token não informado"],
+    [{ token: 123 }, "Token não informado"],
+    [{ token: "desconhecido" }, "Token inválido"],
+  ])("rejeita token ausente ou inválido: %j", async (body, error) => {
+    const db = dbWithUser();
+    const base = await listen(db);
+    const response = await postJson(`${base}/api/cli/token`, body);
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(logs()).toContainEqual(expect.objectContaining({
+      client: "cli",
+      level: "WARN",
+      operation: "token",
+      request_id: response.headers.get("x-request-id"),
+    }));
+  });
+
+  it("rejeita requisição de token sem corpo", async () => {
+    const base = await listen(dbWithUser());
+    const response = await fetch(`${base}/api/cli/token`, { method: "POST" });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Token não informado" });
   });
 });
 

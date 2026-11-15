@@ -11,7 +11,8 @@ Lista de jogos com **Web + CLI** sobre a mesma API REST e o mesmo banco (trabalh
 | Papel | Arquivo |
 |---|---|
 | Web | `index.html` (HTML, CSS e JavaScript embutidos) |
-| API | `api.ts` |
+| API (rotas e inicialização) | `api.ts` |
+| Handlers compartilhados da API | `api.handler.ts` |
 | Banco (inclui o `Logger`) | `db.ts` |
 | CLI | `cli.ts` (entra na issue #7) |
 | Documentação | `README.md` (uma seção por issue) |
@@ -111,7 +112,7 @@ docker compose run --rm tests                         # testes + cobertura de li
 docker compose run --rm tests npm run typecheck       # verificação de tipos
 ```
 
-A cobertura exigida é de **100% das linhas** de `api.ts`, `db.ts` (e `cli.ts` quando existir). O comando falha se ficar abaixo disso. `index.html`, testes, infraestrutura e configuração não entram na cobertura.
+A cobertura exigida é de **100% das linhas** de `api.ts`, `api.handler.ts`, `db.ts` e `cli.ts`. O comando falha se ficar abaixo disso. `index.html`, testes, infraestrutura e configuração não entram na cobertura.
 <!-- ===== #1 fim ===== -->
 
 <!-- ===== #2 inicio: cadastro/edição web (B) ===== -->
@@ -184,6 +185,14 @@ Cada requisição gera linhas `db` (`list_records`, `count_records`, `delete_rec
 <!-- ===== #6 fim ===== -->
 
 <!-- ===== #7 inicio: estrutura CLI (B) ===== -->
+## #7 Endpoints da CLI
+
+| Método | Rota | Autenticação | Descrição |
+|---|---|---|---|
+| GET | `/api/cli/health` | Pública | Healthcheck sem acesso ao banco |
+| POST | `/api/cli/token` | Pública | Recebe `{"token":"..."}` e retorna 200 se o token de sessão for válido; 401 se estiver ausente ou for inválido |
+
+O token é o mesmo emitido pelo login Web e é mantido em memória pela instância da API. A CLI usa `GAMESLIST_API_URL` para localizar a API; `health` verifica sua disponibilidade e `token --token <token>` valida um token.
 <!-- ===== #7 fim ===== -->
 
 <!-- ===== #8 inicio: cadastro/edição CLI (A) ===== -->
