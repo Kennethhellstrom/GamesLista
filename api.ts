@@ -2,9 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth } from "./api.handler.js";
+import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth, validateRecord } from "./api.handler.js";
 import {
   type Queryable,
+  cliCountRecords,
+  cliDeleteRecord,
+  cliInsertRecord,
+  cliListRecords,
+  cliUpdateRecord,
   createPool,
   initSchema,
   isSortField,
@@ -14,6 +19,7 @@ import {
   webCountRecords,
   webCountSearchRecords,
   webDeleteRecord,
+  webDashboard,
   webListRecords,
   webSearchRecords,
 } from "./db.js";
@@ -234,6 +240,19 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #5 fim =====
 
   // ===== #6 inicio: dashboard web (A) =====
+
+  // Os 3 indicadores calculados no banco a cada chamada (recarregar a página atualiza os valores).
+  app.get("/api/web/dashboard", auth, async (_req: Request, res: Response) => {
+    try {
+      const data = await webDashboard(db, "web", requestIdOf(res));
+      apiLog(res, "web", "INFO", "dashboard", "Dashboard devolvido");
+      res.status(200).json(data);
+    } catch {
+      apiLog(res, "web", "ERROR", "dashboard", "Erro interno ao calcular o dashboard");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #6 fim =====
 
   // ===== #7 inicio: estrutura CLI (B) =====
@@ -242,9 +261,122 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #7 fim =====
 
   // ===== #8 inicio: cadastro/edição CLI (A) =====
+
+  // Mesmo TokenStore (e o mesmo token do login) da Web, mas os logs saem com client "cli".
+  const cliAuth = (req: Request, res: Response, next: NextFunction): void => {
+    const header = req.header("authorization") ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!tokens.validate(token)) {
+      apiLog(res, "cli", "WARN", "auth", "Token ausente ou inválido");
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+    next();
+  };
+
+  // Criação: mesma validação da Web (validateRecord, issue #2); erro de campo responde 400 {"errors":{...}}.
+  app.post("/api/cli/records", cliAuth, async (req: Request, res: Response) => {
+    const { value, errors } = validateRecord(req.body);
+    if (!value) {
+      apiLog(res, "cli", "WARN", "cli_create_record", "Dados do jogo inválidos");
+      res.status(400).json({ errors });
+      return;
+    }
+    try {
+      const record = await cliInsertRecord(db, value, "cli", requestIdOf(res));
+      apiLog(res, "cli", "INFO", "cli_create_record", `Jogo ${record.id} cadastrado`);
+      res.status(200).json(record);
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_create_record", "Erro interno ao cadastrar jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
+  // Edição: substitui todos os campos de um jogo ativo; id inválido, inexistente ou excluído responde 404.
+  app.put("/api/cli/records/:id", cliAuth, async (req: Request, res: Response) => {
+    const id = positiveInt(req.params.id, 0);
+    if (id === null || id === 0) {
+      apiLog(res, "cli", "WARN", "cli_update_record", "Jogo não encontrado");
+      res.status(404).json({ error: "Jogo não encontrado" });
+      return;
+    }
+    const { value, errors } = validateRecord(req.body);
+    if (!value) {
+      apiLog(res, "cli", "WARN", "cli_update_record", "Dados do jogo inválidos");
+      res.status(400).json({ errors });
+      return;
+    }
+    try {
+      const record = await cliUpdateRecord(db, id, value, "cli", requestIdOf(res));
+      if (!record) {
+        apiLog(res, "cli", "WARN", "cli_update_record", "Jogo não encontrado");
+        res.status(404).json({ error: "Jogo não encontrado" });
+        return;
+      }
+      apiLog(res, "cli", "INFO", "cli_update_record", `Jogo ${id} atualizado`);
+      res.status(200).json(record);
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_update_record", "Erro interno ao atualizar jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #8 fim =====
 
   // ===== #9 inicio: listagem/exclusão CLI (C) =====
+
+  // Listagem da CLI: mesmos parâmetros e formato da Web ({items,page,page_size,total}), com SQL próprio.
+  app.get("/api/cli/records", cliAuth, async (req: Request, res: Response) => {
+    const page = positiveInt(req.query.page, 1);
+    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
+    const sort = req.query.sort ?? "id";
+    const order = req.query.order ?? "asc";
+    if (
+      page === null ||
+      pageSize === null ||
+      pageSize > MAX_PAGE_SIZE ||
+      !isSortField(sort) ||
+      (order !== "asc" && order !== "desc")
+    ) {
+      apiLog(res, "cli", "WARN", "cli_list_records", "Parâmetros de listagem inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const requestId = requestIdOf(res);
+      const items = await cliListRecords(db, { page, pageSize, sort, order }, "cli", requestId);
+      const total = await cliCountRecords(db, "cli", requestId);
+      apiLog(res, "cli", "INFO", "cli_list_records", `Listagem devolvida (página ${page})`);
+      res.status(200).json({ items, page, page_size: pageSize, total });
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_list_records", "Erro interno ao listar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
+  // Exclusão lógica pela CLI: id inválido, inexistente ou já excluído responde 404.
+  app.delete("/api/cli/records/:id", cliAuth, async (req: Request, res: Response) => {
+    const id = positiveInt(req.params.id, 0);
+    if (id === null || id === 0) {
+      apiLog(res, "cli", "WARN", "cli_delete_record", "Identificador inválido");
+      res.status(404).json({ error: "Jogo não encontrado" });
+      return;
+    }
+    try {
+      const deleted = await cliDeleteRecord(db, id, "cli", requestIdOf(res));
+      if (!deleted) {
+        apiLog(res, "cli", "WARN", "cli_delete_record", "Jogo não encontrado");
+        res.status(404).json({ error: "Jogo não encontrado" });
+        return;
+      }
+      apiLog(res, "cli", "INFO", "cli_delete_record", `Jogo ${id} excluído`);
+      res.status(204).end();
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_delete_record", "Erro interno ao excluir jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #9 fim =====
 
   // ===== #10 inicio: busca CLI (B) =====

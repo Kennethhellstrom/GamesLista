@@ -307,7 +307,35 @@
 
     <section id="tab-dashboard" class="card" role="tabpanel" hidden>
       <!-- ===== #6 inicio: dashboard web (A) ===== -->
-      <p class="placeholder">Dashboard: em breve (issue #6).</p>
+      <style>
+        .dash-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+        .dash-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 0; }
+        .dash-card h3 { margin: 0 0 8px; font-size: 1rem; }
+        .dash-card svg { display: block; width: 100%; height: auto; }
+        .dash-card svg text { fill: var(--text); font-size: 12px; }
+        .dash-card svg .muted { fill: var(--muted); }
+        .dash-empty { margin: 0; color: var(--muted); }
+        .dash-actions .error { margin: 0; min-height: 0; }
+      </style>
+      <div class="dash-actions">
+        <button id="dash-reload" type="button" class="secondary">Atualizar</button>
+        <span id="dash-error" class="error" role="alert"></span>
+      </div>
+      <div class="dash-grid">
+        <section class="dash-card" aria-labelledby="dash-genre-title">
+          <h3 id="dash-genre-title">Jogos por gênero</h3>
+          <div id="dash-genre"></div>
+        </section>
+        <section class="dash-card" aria-labelledby="dash-platform-title">
+          <h3 id="dash-platform-title">Jogos por plataforma</h3>
+          <div id="dash-platform"></div>
+        </section>
+        <section class="dash-card" aria-labelledby="dash-year-title">
+          <h3 id="dash-year-title">Nota média por ano</h3>
+          <div id="dash-year"></div>
+        </section>
+      </div>
       <!-- ===== #6 fim ===== -->
     </section>
   </main>
@@ -868,6 +896,147 @@
     // ===== #5 fim =====
 
     // ===== #6 inicio: dashboard web (A) =====
+    // Gráficos em SVG puro (sem biblioteca). Todo texto vem de textContent/setAttribute, nunca de innerHTML.
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const DASH_COLORS = ["#7c5cff", "#4cc9f0", "#f72585", "#ffb703", "#52b788", "#ff7b54", "#9d4edd", "#2ec4b6"];
+    const dashError = document.getElementById("dash-error");
+    let dashSeq = 0;
+
+    function svgEl(name, attrs = {}, text) {
+      const element = document.createElementNS(SVG_NS, name);
+      for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, String(value));
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+
+    function dashMount(id, points, draw, description) {
+      const holder = document.getElementById(id);
+      holder.replaceChildren();
+      if (points.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "dash-empty";
+        empty.textContent = "Sem dados para exibir.";
+        holder.append(empty);
+        return;
+      }
+      const svg = draw(points);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", description);
+      holder.append(svg);
+    }
+
+    function dashShort(label, max) {
+      return label.length > max ? `${label.slice(0, max - 1)}…` : label;
+    }
+
+    // Barras horizontais: uma linha por rótulo, comprimento proporcional ao maior valor.
+    function drawBars(points) {
+      const rowHeight = 26;
+      const left = 110;
+      const width = 420;
+      const maxValue = Math.max(...points.map((point) => point.value));
+      const svg = svgEl("svg", { viewBox: `0 0 ${width} ${points.length * rowHeight + 4}` });
+      points.forEach((point, index) => {
+        const y = index * rowHeight + 2;
+        const length = Math.max(2, ((width - left - 40) * point.value) / maxValue);
+        const label = svgEl("text", { x: left - 6, y: y + 15, "text-anchor": "end" }, dashShort(point.label, 16));
+        label.append(svgEl("title", {}, point.label));
+        svg.append(label);
+        svg.append(svgEl("rect", { x: left, y, width: length, height: rowHeight - 8, rx: 3, fill: DASH_COLORS[0] }));
+        svg.append(svgEl("text", { x: left + length + 6, y: y + 15 }, String(point.value)));
+      });
+      return svg;
+    }
+
+    // Pizza: cada fatia é um arco proporcional ao valor, com legenda ao lado.
+    function drawPie(points) {
+      const total = points.reduce((sum, point) => sum + point.value, 0);
+      const cx = 90;
+      const cy = 90;
+      const radius = 80;
+      const legendHeight = points.length * 20 + 10;
+      const svg = svgEl("svg", { viewBox: `0 0 420 ${Math.max(180, legendHeight)}` });
+      let angle = -Math.PI / 2;
+      points.forEach((point, index) => {
+        const color = DASH_COLORS[index % DASH_COLORS.length];
+        const slice = (point.value / total) * 2 * Math.PI;
+        if (points.length === 1) {
+          svg.append(svgEl("circle", { cx, cy, r: radius, fill: color }));
+        } else {
+          const x1 = cx + radius * Math.cos(angle);
+          const y1 = cy + radius * Math.sin(angle);
+          const x2 = cx + radius * Math.cos(angle + slice);
+          const y2 = cy + radius * Math.sin(angle + slice);
+          const large = slice > Math.PI ? 1 : 0;
+          svg.append(svgEl("path", { d: `M${cx} ${cy} L${x1} ${y1} A${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`, fill: color, stroke: "#1a1f36", "stroke-width": 1 }));
+        }
+        angle += slice;
+        const y = 16 + index * 20;
+        svg.append(svgEl("rect", { x: 200, y: y - 10, width: 12, height: 12, rx: 2, fill: color }));
+        const percent = Math.round((point.value / total) * 100);
+        svg.append(svgEl("text", { x: 220, y }, `${dashShort(point.label, 18)}: ${point.value} (${percent}%)`));
+      });
+      return svg;
+    }
+
+    // Linha: nota média (eixo de 0 a 10) por ano de lançamento, em ordem crescente de ano.
+    function drawLine(points) {
+      const width = 420;
+      const height = 220;
+      const padLeft = 32;
+      const padRight = 16;
+      const padTop = 14;
+      const padBottom = 34;
+      const plotW = width - padLeft - padRight;
+      const plotH = height - padTop - padBottom;
+      const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}` });
+      const yOf = (value) => padTop + plotH - (value / 10) * plotH;
+      const xOf = (index) => (points.length === 1 ? padLeft + plotW / 2 : padLeft + (plotW * index) / (points.length - 1));
+      for (const tick of [0, 5, 10]) {
+        svg.append(svgEl("line", { x1: padLeft, x2: width - padRight, y1: yOf(tick), y2: yOf(tick), stroke: "#2c3354" }));
+        svg.append(svgEl("text", { x: padLeft - 6, y: yOf(tick) + 4, "text-anchor": "end", class: "muted" }, String(tick)));
+      }
+      const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index)} ${yOf(point.value)}`).join(" ");
+      svg.append(svgEl("path", { d: path, fill: "none", stroke: DASH_COLORS[0], "stroke-width": 2 }));
+      const step = Math.ceil(points.length / 7);
+      points.forEach((point, index) => {
+        const dot = svgEl("circle", { cx: xOf(index), cy: yOf(point.value), r: 3.5, fill: DASH_COLORS[1] });
+        dot.append(svgEl("title", {}, `${point.label}: ${point.value}`));
+        svg.append(dot);
+        if (index % step === 0) {
+          svg.append(svgEl("text", { x: xOf(index), y: height - 14, "text-anchor": "middle", class: "muted" }, point.label));
+        }
+      });
+      return svg;
+    }
+
+    async function loadDashboard() {
+      dashError.textContent = "";
+      // Respostas antigas (de uma chamada anterior ainda em andamento) são descartadas.
+      const seq = ++dashSeq;
+      try {
+        const response = await apiFetch("/dashboard");
+        if (!response.ok) throw new Error("falha");
+        const data = await response.json();
+        if (seq !== dashSeq) return;
+        dashMount("dash-genre", data.by_genre, drawBars, "Gráfico de barras: jogos por gênero");
+        dashMount("dash-platform", data.by_platform, drawPie, "Gráfico de pizza: jogos por plataforma");
+        dashMount("dash-year", data.avg_rating_by_year, drawLine, "Gráfico de linha: nota média por ano");
+      } catch {
+        if (seq === dashSeq) dashError.textContent = "Não foi possível carregar o dashboard.";
+      }
+    }
+
+    // Recalcula a cada abertura da aba (ao recarregar a página a aba volta ao início): valores sempre do banco.
+    document.querySelector('[data-tab="dashboard"]').addEventListener("click", loadDashboard);
+    document.getElementById("dash-reload").addEventListener("click", loadDashboard);
+    // Ao sair (logout), apaga os gráficos para a próxima sessão não ver dados antigos.
+    new MutationObserver(() => {
+      if (!appView.hidden) return;
+      dashSeq += 1;
+      for (const id of ["dash-genre", "dash-platform", "dash-year"]) document.getElementById(id).replaceChildren();
+      dashError.textContent = "";
+    }).observe(appView, { attributes: true, attributeFilter: ["hidden"] });
     // ===== #6 fim =====
 
     // ======================= INICIALIZAÇÃO =======================
