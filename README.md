@@ -267,6 +267,45 @@ Cada busca gera linhas `db` (`search_records` e `count_search_records`) e `api` 
 <!-- ===== #5 fim ===== -->
 
 <!-- ===== #6 inicio: dashboard web (A) ===== -->
+## #6 Dashboard
+
+Na aba **Dashboard** (depois do login) aparecem **3 gráficos desenhados em SVG, sem biblioteca externa**, calculados com dados reais do banco. Os valores são recalculados a cada vez que a aba é aberta e ao clicar em **Atualizar**; ao recarregar a página, a consulta é refeita. Com a tabela vazia, cada gráfico mostra "Sem dados para exibir." e a página não quebra. Só jogos ativos (`active = 1`) entram nos cálculos, então o que for excluído (na Web ou na CLI) deixa de contar.
+
+### Indicadores
+
+| Indicador | Gráfico | Consulta (`db.ts`, `webDashboard`) | Ordem |
+|---|---|---|---|
+| `by_genre` | Barras horizontais | `SELECT genre AS label, COUNT(*) AS value ... GROUP BY genre` | Maior valor primeiro; empate por rótulo |
+| `by_platform` | Pizza com legenda (valor e %) | `SELECT platform AS label, COUNT(*) AS value ... GROUP BY platform` | Maior valor primeiro; empate por rótulo |
+| `avg_rating_by_year` | Linha (eixo de 0 a 10) | `SELECT release_year AS label, ROUND(AVG(rating)::numeric, 2) AS value ... GROUP BY release_year` | Ano crescente |
+
+Em `by_genre` e `by_platform` o valor é **quantos jogos ativos** há em cada grupo. Em `avg_rating_by_year` o valor é a **nota média** dos jogos ativos lançados naquele ano, com 2 casas decimais. O `label` é sempre texto (inclusive o ano) e o `value` é número.
+
+### Endpoint
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/web/dashboard` | `{"by_genre":[{"label","value"}],"by_platform":[{"label","value"}],"avg_rating_by_year":[{"label","value"}]}` |
+
+Exige `Authorization: Bearer <token>` (sem token ou com token inválido, **401**, sem acessar o banco). Sem jogos ativos, as 3 listas vêm vazias (`[]`). Falha no banco responde **500**.
+
+```bash
+# TOKEN obtido no login, como no exemplo da issue #3
+curl -s "http://localhost:8080/api/web/dashboard" -H "Authorization: Bearer $TOKEN"
+curl -i "http://localhost:8080/api/web/dashboard"    # 401
+```
+
+Com o seed de 29 jogos (`GAMESLIST_SEED=true`, ver a issue #3): 6 gêneros (Outro 12, RPG 5, Aventura 4, Ação 3, Corrida 3, Puzzle 2), 5 plataformas (PC 10, PlayStation 9, Switch 5, Xbox 4, Outro 1) e 17 anos, de 2000 (nota média 3.5) a 2024 (9.15).
+
+### Logs
+
+Cada chamada gera 3 linhas `db` (`dashboard_by_genre`, `dashboard_by_platform`, `dashboard_avg_rating_by_year`) e 1 linha `api` (`dashboard`), todas com o mesmo `request_id` (`docker compose logs api`).
+
+### Testes
+
+`tests/dashboard.db.test.ts` e `tests/dashboard.api.test.ts` cobrem o dashboard com dados (conversão de texto do banco para número), com a tabela vazia, as 3 agregações e o filtro de jogos ativos, o recálculo a cada chamada, 401 (sem token e token inválido), logs correlacionados e erro de banco (500). Execute com `docker compose run --rm tests`.
+
+> A **#12** (indicadores pela CLI) devolve os mesmos 3 indicadores em `GET /api/cli/dashboard`, com SQL próprio, e deve apontar para esta seção.
 <!-- ===== #6 fim ===== -->
 
 <!-- ===== #7 inicio: estrutura CLI (B) ===== -->
