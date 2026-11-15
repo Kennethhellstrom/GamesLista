@@ -523,6 +523,77 @@ export async function webCountSearchRecords(
 // ===== #5 fim =====
 
 // ===== #6 inicio: dashboard web (A) =====
+
+/** Um ponto de indicador: rótulo (gênero, plataforma ou ano) e valor (contagem ou nota média). */
+export interface DashboardPoint {
+  label: string;
+  value: number;
+}
+
+/** Os 3 indicadores do dashboard, calculados só sobre jogos ativos (`active = 1`). */
+export interface DashboardData {
+  by_genre: DashboardPoint[];
+  by_platform: DashboardPoint[];
+  avg_rating_by_year: DashboardPoint[];
+}
+
+/** Converte as linhas `{label, value}` do banco (COUNT e AVG chegam como texto) em pontos numéricos. */
+function toPoints(rows: unknown[]): DashboardPoint[] {
+  return (rows as { label: string | number; value: string | number }[]).map((row) => ({
+    label: String(row.label),
+    value: Number(row.value),
+  }));
+}
+
+/**
+ * Calcula os 3 indicadores do dashboard com uma agregação (`GROUP BY`) cada:
+ * jogos por gênero, jogos por plataforma e nota média por ano de lançamento (2 casas).
+ * Gêneros e plataformas saem do maior para o menor valor; os anos, em ordem crescente.
+ */
+export async function webDashboard(db: Queryable, client: ClientKind, requestId: string): Promise<DashboardData> {
+  const byGenre = await run(
+    db,
+    client,
+    requestId,
+    "dashboard_by_genre",
+    "Indicador por gênero calculado",
+    `SELECT genre AS label, COUNT(*) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY genre
+      ORDER BY value DESC, label ASC`,
+  );
+  const byPlatform = await run(
+    db,
+    client,
+    requestId,
+    "dashboard_by_platform",
+    "Indicador por plataforma calculado",
+    `SELECT platform AS label, COUNT(*) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY platform
+      ORDER BY value DESC, label ASC`,
+  );
+  const avgByYear = await run(
+    db,
+    client,
+    requestId,
+    "dashboard_avg_rating_by_year",
+    "Indicador de nota média por ano calculado",
+    `SELECT release_year AS label, ROUND(AVG(rating)::numeric, 2) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY release_year
+      ORDER BY release_year ASC`,
+  );
+  return {
+    by_genre: toPoints(byGenre),
+    by_platform: toPoints(byPlatform),
+    avg_rating_by_year: toPoints(avgByYear),
+  };
+}
+
 // ===== #6 fim =====
 
 // ===== #7 inicio: estrutura CLI (B) =====
