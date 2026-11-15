@@ -580,6 +580,67 @@ export async function cliUpdateRecord(
 // ===== #8 fim =====
 
 // ===== #9 inicio: listagem/exclusão CLI (C) =====
+
+/** Lista uma página de jogos ativos para a CLI (SQL próprio; ordenação só por colunas da lista permitida). */
+export async function cliListRecords(
+  db: Queryable,
+  options: ListOptions,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord[]> {
+  const column = SORT_COLUMNS[options.sort];
+  const direction = options.order === "desc" ? "DESC" : "ASC";
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_list_records",
+    "Listagem de jogos pela CLI concluída",
+    `SELECT id, title, platform, genre, release_year, rating, notes
+       FROM games
+      WHERE active = 1
+      ORDER BY ${column} ${direction}, id ASC
+      LIMIT $1 OFFSET $2`,
+    [options.pageSize, (options.page - 1) * options.pageSize],
+  );
+  return rows as GameRecord[];
+}
+
+/** Total de jogos ativos para a paginação da CLI. */
+export async function cliCountRecords(db: Queryable, client: ClientKind, requestId: string): Promise<number> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_count_records",
+    "Contagem de jogos pela CLI concluída",
+    "SELECT COUNT(*) AS total FROM games WHERE active = 1",
+  );
+  return Number((rows[0] as { total: string | number }).total);
+}
+
+/**
+ * Exclusão lógica pela CLI: marca o jogo como inativo (`active = 0`).
+ * Devolve `false` quando o id não existe ou já foi excluído.
+ */
+export async function cliDeleteRecord(
+  db: Queryable,
+  id: number,
+  client: ClientKind,
+  requestId: string,
+): Promise<boolean> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_delete_record",
+    "Exclusão lógica de jogo pela CLI concluída",
+    "UPDATE games SET active = 0 WHERE id = $1 AND active = 1 RETURNING id",
+    [id],
+  );
+  return rows.length > 0;
+}
+
 // ===== #9 fim =====
 
 // ===== #10 inicio: busca CLI (B) =====
