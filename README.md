@@ -116,6 +116,33 @@ A cobertura exigida é de **100% das linhas** de `api.ts`, `api.handler.ts`, `db
 <!-- ===== #1 fim ===== -->
 
 <!-- ===== #2 inicio: cadastro/edição web (B) ===== -->
+## #2 Cadastro e edição
+
+Na aba **Cadastro**, o mesmo formulário cria e edita jogos. Os campos são:
+
+| Campo | Regra |
+|---|---|
+| `title` | Obrigatório; de 1 a 100 caracteres |
+| `platform` | Obrigatório; `PC`, `PlayStation`, `Xbox`, `Switch`, `Mobile` ou `Outro` |
+| `genre` | Obrigatório; `Ação`, `Aventura`, `RPG`, `Estratégia`, `Esporte`, `Corrida`, `Puzzle` ou `Outro` |
+| `release_year` | Obrigatório; inteiro entre 1970 e o ano atual + 1 |
+| `rating` | Obrigatório; número entre 0 e 10 |
+| `notes` | Opcional; até 500 caracteres |
+
+Espaços no início/fim do título são removidos antes de salvar; observações vazias são persistidas como `null`. A Web valida os campos antes do envio e a API repete a validação como fonte de verdade. Erros de validação respondem HTTP 400 no formato `{"errors":{"campo":"mensagem"}}`.
+
+### Endpoints
+
+Ambos exigem `Authorization: Bearer <token>` (sem token, **401**).
+
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/api/web/records` | Cria um jogo; responde **200** com o registro persistido |
+| PUT | `/api/web/records/{id}` | Atualiza um jogo ativo; responde **200** com o registro persistido |
+
+Na edição, um id inexistente ou inativo responde **404**. A listagem inclui o botão **Editar** por linha; ao salvar, o formulário é limpo. Registros antigos com plataforma/gênero fora das opções atuais pedem a seleção de um valor permitido antes de salvar.
+
+Execute os testes e a cobertura de linhas exigida com `docker compose run --rm tests`.
 <!-- ===== #2 fim ===== -->
 
 <!-- ===== #3 inicio: listagem/exclusão web (C) ===== -->
@@ -129,7 +156,7 @@ Na aba **Listagem** (depois do login) os jogos aparecem em uma tabela com **4 ca
 
 ### Preparar dados (seed)
 
-O banco começa vazio. Para popular com **29 jogos** de exemplo (7 gêneros, 5 plataformas, anos de 2000 a 2024, notas de 3,5 a 9,8), ligue o seed:
+O banco começa vazio. Para popular com **29 jogos** de exemplo (6 gêneros, 5 plataformas, anos de 2000 a 2024, notas de 3,5 a 9,8), ligue o seed:
 
 ```bash
 # no .env (copie de .env.example) ou direto no comando:
@@ -137,6 +164,8 @@ GAMESLIST_SEED=true docker compose up --build
 ```
 
 O seed roda na inicialização da API e **não duplica**: se a tabela `games` já tiver linhas (inclusive as excluídas logicamente), nada é inserido. Por padrão (`GAMESLIST_SEED=false`) nenhum dado é criado. Para recomeçar do zero: `docker compose down -v`.
+
+Os valores de plataforma/gênero dos seeds seguem as opções permitidas pelo formulário da issue #2; categorias fora dessas opções são classificadas como `Outro`.
 
 ### Endpoints
 

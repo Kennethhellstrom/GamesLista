@@ -195,6 +195,60 @@ export async function webCheckCredentials(
 // ===== #1 fim =====
 
 // ===== #2 inicio: cadastro/edição web (B) =====
+
+export interface GameRecordInput {
+  title: string;
+  platform: string;
+  genre: string;
+  release_year: number;
+  rating: number;
+  notes: string | null;
+}
+
+/** Persiste um jogo novo e devolve a linha criada. */
+export async function webInsertRecord(
+  db: Queryable,
+  record: GameRecordInput,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord | null> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "insert_record",
+    "Jogo cadastrado",
+    `INSERT INTO games (title, platform, genre, release_year, rating, notes)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, title, platform, genre, release_year, rating, notes`,
+    [record.title, record.platform, record.genre, record.release_year, record.rating, record.notes],
+  );
+  return (rows[0] as GameRecord | undefined) ?? null;
+}
+
+/** Atualiza somente jogos ativos; null indica que o id não existe ou está inativo. */
+export async function webUpdateRecord(
+  db: Queryable,
+  id: number,
+  record: GameRecordInput,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord | null> {
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "update_record",
+    "Jogo atualizado",
+    `UPDATE games
+        SET title = $2, platform = $3, genre = $4, release_year = $5, rating = $6, notes = $7
+      WHERE id = $1 AND active = 1
+      RETURNING id, title, platform, genre, release_year, rating, notes`,
+    [id, record.title, record.platform, record.genre, record.release_year, record.rating, record.notes],
+  );
+  return (rows[0] as GameRecord | undefined) ?? null;
+}
+
 // ===== #2 fim =====
 
 // ===== #3 inicio: listagem/exclusão web e seed (C) =====
@@ -213,31 +267,31 @@ export const SEED_GAMES: readonly SeedGame[] = [
   { title: "The Witcher 3: Wild Hunt", platform: "PC", genre: "RPG", release_year: 2015, rating: 9.7 },
   { title: "God of War", platform: "PlayStation", genre: "Ação", release_year: 2018, rating: 9.5 },
   { title: "Red Dead Redemption 2", platform: "PlayStation", genre: "Ação", release_year: 2018, rating: 9.6 },
-  { title: "Super Mario Odyssey", platform: "Switch", genre: "Plataforma", release_year: 2017, rating: 9.4 },
-  { title: "Hades", platform: "PC", genre: "Roguelike", release_year: 2020, rating: 9.3 },
-  { title: "Celeste", platform: "PC", genre: "Plataforma", release_year: 2018, rating: 9.1 },
+  { title: "Super Mario Odyssey", platform: "Switch", genre: "Outro", release_year: 2017, rating: 9.4 },
+  { title: "Hades", platform: "PC", genre: "Outro", release_year: 2020, rating: 9.3 },
+  { title: "Celeste", platform: "PC", genre: "Outro", release_year: 2018, rating: 9.1 },
   { title: "Elden Ring", platform: "PC", genre: "RPG", release_year: 2022, rating: 9.5 },
-  { title: "Halo 3", platform: "Xbox", genre: "Tiro", release_year: 2007, rating: 8.9 },
+  { title: "Halo 3", platform: "Xbox", genre: "Outro", release_year: 2007, rating: 8.9 },
   { title: "Forza Horizon 5", platform: "Xbox", genre: "Corrida", release_year: 2021, rating: 8.8 },
   { title: "Gran Turismo 3", platform: "PlayStation", genre: "Corrida", release_year: 2001, rating: 8.7 },
-  { title: "Half-Life 2", platform: "PC", genre: "Tiro", release_year: 2004, rating: 9.6 },
+  { title: "Half-Life 2", platform: "PC", genre: "Outro", release_year: 2004, rating: 9.6 },
   { title: "Portal 2", platform: "PC", genre: "Puzzle", release_year: 2011, rating: 9.5 },
-  { title: "Stardew Valley", platform: "PC", genre: "Simulação", release_year: 2016, rating: 9.0 },
-  { title: "Animal Crossing: New Horizons", platform: "Switch", genre: "Simulação", release_year: 2020, rating: 8.6 },
+  { title: "Stardew Valley", platform: "PC", genre: "Outro", release_year: 2016, rating: 9.0 },
+  { title: "Animal Crossing: New Horizons", platform: "Switch", genre: "Outro", release_year: 2020, rating: 8.6 },
   { title: "Metroid Dread", platform: "Switch", genre: "Aventura", release_year: 2021, rating: 8.8 },
   { title: "Final Fantasy X", platform: "PlayStation", genre: "RPG", release_year: 2001, rating: 9.0 },
   { title: "Grand Theft Auto: San Andreas", platform: "PlayStation", genre: "Ação", release_year: 2004, rating: 9.2 },
-  { title: "Resident Evil 4", platform: "PlayStation", genre: "Terror", release_year: 2005, rating: 9.3 },
-  { title: "Silent Hill 2", platform: "PlayStation", genre: "Terror", release_year: 2001, rating: 8.9 },
+  { title: "Resident Evil 4", platform: "PlayStation", genre: "Outro", release_year: 2005, rating: 9.3 },
+  { title: "Silent Hill 2", platform: "PlayStation", genre: "Outro", release_year: 2001, rating: 8.9 },
   { title: "Fable", platform: "Xbox", genre: "RPG", release_year: 2004, rating: 8.2 },
-  { title: "Gears of War", platform: "Xbox", genre: "Tiro", release_year: 2006, rating: 8.5 },
+  { title: "Gears of War", platform: "Xbox", genre: "Outro", release_year: 2006, rating: 8.5 },
   { title: "Tetris Effect", platform: "PlayStation", genre: "Puzzle", release_year: 2018, rating: 8.4 },
   { title: "Hollow Knight", platform: "PC", genre: "Aventura", release_year: 2017, rating: 9.2 },
-  { title: "Balatro", platform: "PC", genre: "Roguelike", release_year: 2024, rating: 8.9 },
-  { title: "Astro Bot", platform: "PlayStation", genre: "Plataforma", release_year: 2024, rating: 9.4 },
+  { title: "Balatro", platform: "PC", genre: "Outro", release_year: 2024, rating: 8.9 },
+  { title: "Astro Bot", platform: "PlayStation", genre: "Outro", release_year: 2024, rating: 9.4 },
   { title: "Fire Emblem: Three Houses", platform: "Switch", genre: "RPG", release_year: 2019, rating: 8.3 },
   { title: "Need for Speed: Underground", platform: "PC", genre: "Corrida", release_year: 2003, rating: 7.6 },
-  { title: "E.T. the Extra-Terrestrial", platform: "Atari", genre: "Aventura", release_year: 2000, rating: 3.5 },
+  { title: "E.T. the Extra-Terrestrial", platform: "Outro", genre: "Aventura", release_year: 2000, rating: 3.5 },
 ];
 
 /**

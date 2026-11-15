@@ -92,6 +92,8 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #1 fim =====
 
   // ===== #2 inicio: cadastro/edição web (B) =====
+  app.post("/api/web/records", auth, handlers.webCreateRecord);
+  app.put("/api/web/records/:id", auth, handlers.webUpdateRecord);
   // ===== #2 fim =====
 
   // ===== #3 inicio: listagem/exclusão web (C) =====
