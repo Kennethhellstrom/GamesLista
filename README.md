@@ -281,6 +281,96 @@ O token é o mesmo emitido pelo login Web e é mantido em memória pela instânc
 <!-- ===== #7 fim ===== -->
 
 <!-- ===== #8 inicio: cadastro/edição CLI (A) ===== -->
+## #8 Cadastro e edição pela CLI
+
+A CLI cadastra e edita jogos pela API, com os **mesmos campos e validações da Web** (regras da issue #2). Ela não acessa o banco diretamente: usa rotas próprias em `/api/cli/*`, e o banco usa SQL próprio da CLI (`cliInsertRecord` e `cliUpdateRecord` em `db.ts`). Os jogos gravados pela CLI aparecem na Web, e os da Web aparecem na CLI.
+
+### Comandos
+
+| Comando | Descrição |
+|---|---|
+| `add --title T --platform P --genre G --year Y --rating R [--notes N]` | Cadastra um jogo |
+| `edit <id> --title T --platform P --genre G --year Y --rating R [--notes N]` | Edita o jogo `<id>`, substituindo **todos** os campos |
+
+| Opção | Campo | Regra (igual à da Web) |
+|---|---|---|
+| `--title` | `title` | Obrigatório; de 1 a 100 caracteres |
+| `--platform` | `platform` | Obrigatório; `PC`, `PlayStation`, `Xbox`, `Switch`, `Mobile` ou `Outro` |
+| `--genre` | `genre` | Obrigatório; `Ação`, `Aventura`, `RPG`, `Estratégia`, `Esporte`, `Corrida`, `Puzzle` ou `Outro` |
+| `--year` | `release_year` | Obrigatório; inteiro entre 1970 e o ano atual + 1 |
+| `--rating` | `rating` | Obrigatório; número de 0 a 10 (aceita `8.5` ou `8,5`) |
+| `--notes` | `notes` | Opcional; até 500 caracteres |
+
+Em `edit`, informe todos os campos obrigatórios. Se `--notes` ficar de fora, as observações ficam vazias. A validação é feita pela API: em caso de erro, a CLI mostra cada problema com o nome da opção e termina com código 1.
+
+### Autenticação
+
+Os dois comandos exigem o token do login, informado na variável `GAMESLIST_TOKEN` (é o mesmo token da Web; ver a issue #1). Sem token válido, a API responde **401**.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/web/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli add \
+  --title "Hades" --platform PC --genre Outro --year 2020 --rating 9.3 --notes "Roguelike"
+# Jogo cadastrado (HTTP 200): #30 Hades | PC | Outro | 2020 | nota 9.3 | Roguelike
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli edit 30 \
+  --title "Hades II" --platform PC --genre Outro --year 2025 --rating 9,1
+# Jogo atualizado (HTTP 200): #30 Hades II | PC | Outro | 2025 | nota 9.1
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli add --platform Atari --year 1960
+# Error: Dados inválidos (400):
+#   --title: Informe um título de 1 a 100 caracteres.
+#   --platform: Selecione uma plataforma válida.
+#   --genre: Selecione um gênero válido.
+#   --year: Informe um ano inteiro entre 1970 e 2027.
+#   --rating: Informe uma nota de 0 a 10.
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli edit 999 --title X --platform PC --genre RPG --year 2020 --rating 5
+# Error: Jogo 999 não encontrado (404).
+```
+
+Também dá para definir `GAMESLIST_TOKEN` no `.env`, que o Compose repassa ao serviço `cli`. O token fica só na memória da API: se ela reiniciar ou o container for recriado (por exemplo, rodando a CLI com variáveis diferentes das usadas no `docker compose up`), faça login de novo.
+
+### Endpoints
+
+Os dois exigem `Authorization: Bearer <token>` (sem token, **401**).
+
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/api/cli/records` | Cadastra um jogo: **200** com o registro persistido; **400** `{"errors":{"campo":"mensagem"}}` |
+| PUT | `/api/cli/records/{id}` | Edita um jogo ativo: **200** com o registro; **400** com os erros por campo; **404** se o id não existir, for inválido ou o jogo estiver excluído |
+
+O corpo é JSON com `title`, `platform`, `genre`, `release_year`, `rating` e `notes`, igual às rotas da Web. A validação é a mesma função `validateRecord` da issue #2.
+
+```bash
+curl -s -X POST http://localhost:8080/api/cli/records -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Celeste","platform":"PC","genre":"Outro","release_year":2018,"rating":9.1}'
+curl -i -X PUT http://localhost:8080/api/cli/records/999 -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"X","platform":"PC","genre":"RPG","release_year":2020,"rating":5}'   # 404
+curl -i -X POST http://localhost:8080/api/cli/records -d '{}'                         # 401
+```
+
+### Logs
+
+Cada requisição gera uma linha `db` (`cli_insert_record` ou `cli_update_record`) e uma linha `api` (`cli_create_record` ou `cli_update_record`) com `client: "cli"` e o **mesmo `request_id`**. Dados inválidos, id inexistente e token inválido geram `WARN` na API. Consulte com `docker compose logs api`:
+
+```json
+{"timestamp":"2026-11-15T18:40:00.000Z","level":"INFO","layer":"db","client":"cli","operation":"cli_insert_record","status":"success","request_id":"req-5b0e3c8a-2f41-4d7e-9a61-0c2d8e4f7b19","message":"Jogo cadastrado pela CLI"}
+{"timestamp":"2026-11-15T18:40:00.003Z","level":"INFO","layer":"api","client":"cli","operation":"cli_create_record","status":"success","request_id":"req-5b0e3c8a-2f41-4d7e-9a61-0c2d8e4f7b19","message":"Jogo 30 cadastrado"}
+```
+
+### Testes
+
+- `tests/cadastro-cli.cli.test.ts`: os comandos `add` e `edit`, com `fetch` falso.
+- `tests/cadastro-cli.api.test.ts`: as rotas, incluindo criar válido, criar inválido, editar existente, editar inexistente, 401, 500, logs correlacionados e um teste de ponta a ponta em que a CLI cadastra e edita e o jogo aparece na listagem da Web.
+- `tests/cadastro-cli.db.test.ts`: o SQL e os logs do banco.
+
+Execute com `docker compose run --rm tests`.
 <!-- ===== #8 fim ===== -->
 
 <!-- ===== #9 inicio: listagem/exclusão CLI (C) ===== -->
