@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth } from "./api.handler.js";
+import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth, validateRecord } from "./api.handler.js";
 import {
   type Queryable,
+  cliInsertRecord,
+  cliUpdateRecord,
   createPool,
   initSchema,
   isSortField,
@@ -242,6 +244,66 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #7 fim =====
 
   // ===== #8 inicio: cadastro/edição CLI (A) =====
+
+  // Mesmo TokenStore (e o mesmo token do login) da Web, mas os logs saem com client "cli".
+  const cliAuth = (req: Request, res: Response, next: NextFunction): void => {
+    const header = req.header("authorization") ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!tokens.validate(token)) {
+      apiLog(res, "cli", "WARN", "auth", "Token ausente ou inválido");
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+    next();
+  };
+
+  // Criação: mesma validação da Web (validateRecord, issue #2); erro de campo responde 400 {"errors":{...}}.
+  app.post("/api/cli/records", cliAuth, async (req: Request, res: Response) => {
+    const { value, errors } = validateRecord(req.body);
+    if (!value) {
+      apiLog(res, "cli", "WARN", "cli_create_record", "Dados do jogo inválidos");
+      res.status(400).json({ errors });
+      return;
+    }
+    try {
+      const record = await cliInsertRecord(db, value, "cli", requestIdOf(res));
+      apiLog(res, "cli", "INFO", "cli_create_record", `Jogo ${record.id} cadastrado`);
+      res.status(200).json(record);
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_create_record", "Erro interno ao cadastrar jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
+  // Edição: substitui todos os campos de um jogo ativo; id inválido, inexistente ou excluído responde 404.
+  app.put("/api/cli/records/:id", cliAuth, async (req: Request, res: Response) => {
+    const id = positiveInt(req.params.id, 0);
+    if (id === null || id === 0) {
+      apiLog(res, "cli", "WARN", "cli_update_record", "Jogo não encontrado");
+      res.status(404).json({ error: "Jogo não encontrado" });
+      return;
+    }
+    const { value, errors } = validateRecord(req.body);
+    if (!value) {
+      apiLog(res, "cli", "WARN", "cli_update_record", "Dados do jogo inválidos");
+      res.status(400).json({ errors });
+      return;
+    }
+    try {
+      const record = await cliUpdateRecord(db, id, value, "cli", requestIdOf(res));
+      if (!record) {
+        apiLog(res, "cli", "WARN", "cli_update_record", "Jogo não encontrado");
+        res.status(404).json({ error: "Jogo não encontrado" });
+        return;
+      }
+      apiLog(res, "cli", "INFO", "cli_update_record", `Jogo ${id} atualizado`);
+      res.status(200).json(record);
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_update_record", "Erro interno ao atualizar jogo");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #8 fim =====
 
   // ===== #9 inicio: listagem/exclusão CLI (C) =====
