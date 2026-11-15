@@ -15,6 +15,10 @@ function printHelp(output: Output): void {
       "  help                          Show this help",
       "  health                        Check API availability",
       "  token [--token TOKEN]   Validate a token",
+      "  add --title T --platform P --genre G --year Y --rating R [--notes N]",
+      "                                Create a game (requires GAMESLIST_TOKEN)",
+      "  edit <id> --title T --platform P --genre G --year Y --rating R [--notes N]",
+      "                                Edit a game, replacing all fields (requires GAMESLIST_TOKEN)",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
@@ -148,6 +152,99 @@ export async function run(
   }
 
   // ===== #8 inicio =====
+  if (command === "add" || command === "edit") {
+    // Opção da CLI -> campo da API. A validação (mesmas regras e mensagens da Web) é feita pela API.
+    const fields: Record<string, string> = {
+      "--title": "title",
+      "--platform": "platform",
+      "--genre": "genre",
+      "--year": "release_year",
+      "--rating": "rating",
+      "--notes": "notes",
+    };
+    const flagOf: Record<string, string> = Object.fromEntries(
+      Object.entries(fields).map(([flag, field]) => [field, flag]),
+    );
+    const editing = command === "edit";
+    const id = editing ? args[1] : undefined;
+    if (editing && (!id || !/^[1-9]\d*$/.test(id))) {
+      output("Error: Informe o id numérico do jogo: gameslista edit <id> --title ...");
+      return 1;
+    }
+
+    let options: Map<string, string>;
+    try {
+      options = parseOptions(args.slice(editing ? 2 : 1), Object.keys(fields));
+    } catch (error) {
+      output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
+      return 1;
+    }
+
+    const token = env.GAMESLIST_TOKEN;
+    if (!token) {
+      output("Error: Defina GAMESLIST_TOKEN com o token obtido no login.");
+      return 1;
+    }
+
+    // Ano e nota vão como número quando forem numéricos (aceita vírgula: 8,5); senão vão como texto e a API recusa.
+    const body: Record<string, unknown> = {};
+    for (const [flag, value] of options) {
+      const field = fields[flag];
+      const number = Number(value.replace(",", "."));
+      const numeric = (field === "release_year" || field === "rating") && value.trim() !== "" && Number.isFinite(number);
+      body[field] = numeric ? number : value;
+    }
+
+    const response = await request(
+      fetchFn,
+      `${apiUrl(env)}/api/cli/records${editing ? `/${id}` : ""}`,
+      {
+        method: editing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      },
+      output,
+    );
+    if (!response) {
+      return 1;
+    }
+    if (response.status === 400) {
+      const data = (await response.json().catch(() => ({}))) as { errors?: Record<string, string> };
+      output("Error: Dados inválidos (400):");
+      for (const [field, message] of Object.entries(data.errors ?? {})) {
+        output(`  ${flagOf[field] ?? field}: ${message}`);
+      }
+      return 1;
+    }
+    if (response.status === 401) {
+      output("Error: Token ausente ou inválido (401). Faça login e atualize GAMESLIST_TOKEN.");
+      return 1;
+    }
+    if (response.status === 404 && editing) {
+      output(`Error: Jogo ${id} não encontrado (404).`);
+      return 1;
+    }
+    if (!response.ok) {
+      output(`Error: ${command} request failed with HTTP ${response.status}.`);
+      return 1;
+    }
+
+    const game = (await response.json()) as {
+      id: number;
+      title: string;
+      platform: string;
+      genre: string;
+      release_year: number;
+      rating: number;
+      notes: string | null;
+    };
+    const notes = game.notes ? ` | ${game.notes}` : "";
+    output(
+      `${editing ? "Jogo atualizado" : "Jogo cadastrado"} (HTTP ${response.status}): ` +
+        `#${game.id} ${game.title} | ${game.platform} | ${game.genre} | ${game.release_year} | nota ${game.rating}${notes}`,
+    );
+    return 0;
+  }
   // ===== #8 fim =====
   // ===== #9 inicio =====
   // ===== #9 fim =====
