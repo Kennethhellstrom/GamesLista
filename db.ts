@@ -371,6 +371,98 @@ export async function webDeleteRecord(
 // ===== #3 fim =====
 
 // ===== #4 inicio: busca web (C) =====
+
+/** Filtros combináveis da busca. Filtro ausente (ou texto vazio) é ignorado; os presentes se combinam com AND. */
+export interface SearchFilters {
+  /** Título contém o texto (sem diferenciar maiúsculas). */
+  q?: string;
+  /** Plataforma igual ao texto (sem diferenciar maiúsculas). */
+  platform?: string;
+  /** Gênero igual ao texto (sem diferenciar maiúsculas). */
+  genre?: string;
+  /** Ano de lançamento maior ou igual (inclusivo). */
+  yearMin?: number;
+  /** Ano de lançamento menor ou igual (inclusivo). */
+  yearMax?: number;
+  /** Nota maior ou igual (inclusivo). */
+  ratingMin?: number;
+}
+
+export interface SearchOptions extends SearchFilters, ListOptions {}
+
+/** Escapa `\`, `%` e `_` para o texto do usuário valer como texto literal dentro do LIKE. */
+function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+/**
+ * Monta o WHERE da busca. Só trechos fixos entram no SQL: todo valor do usuário vai por parâmetro
+ * ($1, $2, ...), nunca por concatenação. Jogos excluídos logicamente nunca aparecem.
+ */
+function buildSearchWhere(filters: SearchFilters): { where: string; values: unknown[] } {
+  const conditions = ["active = 1"];
+  const values: unknown[] = [];
+  const add = (condition: (placeholder: string) => string, value: unknown): void => {
+    values.push(value);
+    conditions.push(condition(`$${values.length}`));
+  };
+
+  if (filters.q) add((p) => `LOWER(title) LIKE '%' || LOWER(${p}) || '%' ESCAPE '\\'`, escapeLike(filters.q));
+  if (filters.platform) add((p) => `LOWER(platform) = LOWER(${p})`, filters.platform);
+  if (filters.genre) add((p) => `LOWER(genre) = LOWER(${p})`, filters.genre);
+  if (filters.yearMin !== undefined) add((p) => `release_year >= ${p}`, filters.yearMin);
+  if (filters.yearMax !== undefined) add((p) => `release_year <= ${p}`, filters.yearMax);
+  if (filters.ratingMin !== undefined) add((p) => `rating >= ${p}`, filters.ratingMin);
+
+  return { where: conditions.join(" AND "), values };
+}
+
+/** Busca uma página de jogos ativos que atendem a todos os filtros, com a mesma ordenação da listagem. */
+export async function webSearchRecords(
+  db: Queryable,
+  options: SearchOptions,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord[]> {
+  const { where, values } = buildSearchWhere(options);
+  const column = SORT_COLUMNS[options.sort];
+  const direction = options.order === "desc" ? "DESC" : "ASC";
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "search_records",
+    "Busca de jogos concluída",
+    `SELECT id, title, platform, genre, release_year, rating, notes
+       FROM games
+      WHERE ${where}
+      ORDER BY ${column} ${direction}, id ASC
+      LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    [...values, options.pageSize, (options.page - 1) * options.pageSize],
+  );
+  return rows as GameRecord[];
+}
+
+/** Total de jogos que atendem aos filtros (base da paginação do resultado filtrado). */
+export async function webCountSearchRecords(
+  db: Queryable,
+  filters: SearchFilters,
+  client: ClientKind,
+  requestId: string,
+): Promise<number> {
+  const { where, values } = buildSearchWhere(filters);
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "count_search_records",
+    "Contagem da busca concluída",
+    `SELECT COUNT(*) AS total FROM games WHERE ${where}`,
+    values,
+  );
+  return Number((rows[0] as { total: string | number }).total);
+}
+
 // ===== #4 fim =====
 
 // ===== #5 inicio: exportação CSV web (A) =====
