@@ -176,6 +176,62 @@ Cada requisição gera linhas `db` (`list_records`, `count_records`, `delete_rec
 <!-- ===== #3 fim ===== -->
 
 <!-- ===== #4 inicio: busca web (C) ===== -->
+## #4 Busca avançada
+
+Na aba **Busca** (depois do login) há um formulário com **6 filtros combináveis**. Ao clicar em **Buscar**, a tabela é atualizada **sem recarregar a página** (consulta assíncrona), com as mesmas colunas da listagem mais o ano, **5 itens por página**, ordenação por coluna (▲/▼) e **Anterior/Próxima** sobre o resultado filtrado. **Limpar filtros** esvazia o formulário e volta à lista completa. Ao abrir a aba sem filtros, aparecem todos os jogos ativos.
+
+### Filtros
+
+Os filtros preenchidos se combinam com **AND**; os vazios são ignorados. Só jogos ativos (`active = 1`) entram no resultado.
+
+| Parâmetro | Campo na tela | Regra |
+|---|---|---|
+| `q` | Título contém | O título contém o texto, sem diferenciar maiúsculas. `%` e `_` valem como texto comum |
+| `platform` | Plataforma | Igual ao texto, sem diferenciar maiúsculas |
+| `genre` | Gênero | Igual ao texto, sem diferenciar maiúsculas |
+| `year_min` | Ano a partir de | Ano de lançamento **maior ou igual** (inclusivo) |
+| `year_max` | Ano até | Ano de lançamento **menor ou igual** (inclusivo) |
+| `rating_min` | Nota mínima | Nota **maior ou igual** (inclusivo), de 0 a 10 (até 2 casas decimais) |
+
+Observações: acentos contam (`Ação` não casa com `Acao`); `platform` e `genre` têm sugestões na tela, mas aceitam qualquer texto; se o ano inicial for maior que o final, o resultado é vazio (a tela avisa antes de buscar).
+
+### Endpoint
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/web/records/search` | Jogos ativos que atendem a todos os filtros enviados: `{"items","page","page_size","total"}` (mesmo formato da listagem) |
+
+Exige `Authorization: Bearer <token>` (sem token, **401**). Além dos filtros acima, aceita `page`, `page_size` (padrão **5**, máximo 100), `sort` (`id` padrão, `title`, `platform`, `genre`, `rating`, `release_year`) e `order` (`asc` padrão ou `desc`). Valores inválidos respondem **400**: nota fora de 0 a 10 ou não numérica, ano que não seja inteiro positivo, texto com mais de 100 caracteres, parâmetro repetido, `sort`/`order`/`page`/`page_size` inválidos.
+
+Os valores digitados **nunca são inseridos no texto do SQL**: vão sempre como parâmetros (`$1`, `$2`, ...). Só trechos fixos do `WHERE` e o campo de ordenação, escolhido de uma lista fixa em `db.ts`, compõem a consulta.
+
+```bash
+# TOKEN obtido no login, como no exemplo da issue #3
+curl -s -G "http://localhost:8080/api/web/records/search" -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "platform=PC" --data-urlencode "rating_min=9"          # 8 jogos
+curl -s -G "http://localhost:8080/api/web/records/search" -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "platform=PlayStation" --data-urlencode "year_min=2018" --data-urlencode "rating_min=9.4"   # 3 jogos
+curl -s -G "http://localhost:8080/api/web/records/search" -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "q=zelda" --data-urlencode "sort=rating" --data-urlencode "order=desc"
+curl -i "http://localhost:8080/api/web/records/search?rating_min=11" -H "Authorization: Bearer $TOKEN"   # 400
+curl -i "http://localhost:8080/api/web/records/search"                                                    # 401
+```
+
+Os números acima valem para o seed de 29 jogos (`GAMESLIST_SEED=true`, ver a issue #3).
+
+### Logs
+
+Cada busca gera linhas `db` (`search_records` e `count_search_records`) e `api` (`search_records`) com o **mesmo `request_id`**. Parâmetros inválidos geram `WARN` na API. Consulte com `docker compose logs api`:
+
+```json
+{"timestamp":"2026-11-15T13:22:25.657Z","level":"INFO","layer":"db","client":"web","operation":"search_records","status":"success","request_id":"req-0896c520-1142-4345-a0be-fa2258fa7499","message":"Busca de jogos concluída"}
+{"timestamp":"2026-11-15T13:22:25.658Z","level":"INFO","layer":"db","client":"web","operation":"count_search_records","status":"success","request_id":"req-0896c520-1142-4345-a0be-fa2258fa7499","message":"Contagem da busca concluída"}
+{"timestamp":"2026-11-15T13:22:25.658Z","level":"INFO","layer":"api","client":"web","operation":"search_records","status":"success","request_id":"req-0896c520-1142-4345-a0be-fa2258fa7499","message":"Busca devolvida (página 1)"}
+```
+
+### Testes
+
+`tests/busca.db.test.ts` e `tests/busca.api.test.ts` cobrem cada filtro sozinho, combinações de 2, 3 e 6 filtros, resultado vazio, ordenação e paginação, tentativa de SQL injection, escape de `%` e `_`, parâmetros inválidos (400), 401, logs correlacionados e erro de banco (500). Execute com `docker compose run --rm tests`.
 <!-- ===== #4 fim ===== -->
 
 <!-- ===== #5 inicio: exportação CSV web (A) ===== -->
