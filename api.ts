@@ -16,6 +16,7 @@ import {
   webCountRecords,
   webCountSearchRecords,
   webDeleteRecord,
+  webDashboard,
   webListRecords,
   webSearchRecords,
 } from "./db.js";
@@ -236,6 +237,19 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #5 fim =====
 
   // ===== #6 inicio: dashboard web (A) =====
+
+  // Os 3 indicadores calculados no banco a cada chamada (recarregar a página atualiza os valores).
+  app.get("/api/web/dashboard", auth, async (_req: Request, res: Response) => {
+    try {
+      const data = await webDashboard(db, "web", requestIdOf(res));
+      apiLog(res, "web", "INFO", "dashboard", "Dashboard devolvido");
+      res.status(200).json(data);
+    } catch {
+      apiLog(res, "web", "ERROR", "dashboard", "Erro interno ao calcular o dashboard");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #6 fim =====
 
   // ===== #7 inicio: estrutura CLI (B) =====
