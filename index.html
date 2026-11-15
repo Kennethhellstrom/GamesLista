@@ -234,7 +234,71 @@
 
     <section id="tab-busca" class="card" role="tabpanel" hidden>
       <!-- ===== #4 inicio: busca web (C) ===== -->
-      <p class="placeholder">Busca avançada: em breve (issue #4).</p>
+      <!-- A tabela reaproveita as classes de estilo da #3 (games, sort, pager, table-wrap, list-empty). -->
+      <style>
+        .busca-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 12px; }
+        .busca-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+      </style>
+      <form id="busca-form" aria-label="Filtros da busca">
+        <div class="busca-grid">
+          <label>Título contém
+            <input id="busca-q" name="q" type="search" maxlength="100" autocomplete="off">
+          </label>
+          <label>Plataforma
+            <input id="busca-platform" name="platform" list="busca-platforms" maxlength="100" autocomplete="off">
+            <datalist id="busca-platforms">
+              <option value="PC"></option><option value="PlayStation"></option><option value="Xbox"></option>
+              <option value="Switch"></option><option value="Atari"></option>
+            </datalist>
+          </label>
+          <label>Gênero
+            <input id="busca-genre" name="genre" list="busca-genres" maxlength="100" autocomplete="off">
+            <datalist id="busca-genres">
+              <option value="Ação"></option><option value="Aventura"></option><option value="RPG"></option>
+              <option value="Plataforma"></option><option value="Roguelike"></option><option value="Tiro"></option>
+              <option value="Corrida"></option><option value="Puzzle"></option><option value="Simulação"></option>
+              <option value="Terror"></option>
+            </datalist>
+          </label>
+          <label>Ano a partir de
+            <input id="busca-year-min" name="year_min" type="number" inputmode="numeric" min="1" step="1">
+          </label>
+          <label>Ano até
+            <input id="busca-year-max" name="year_max" type="number" inputmode="numeric" min="1" step="1">
+          </label>
+          <label>Nota mínima
+            <input id="busca-rating-min" name="rating_min" type="number" inputmode="decimal" min="0" max="10" step="0.1">
+          </label>
+        </div>
+        <div class="busca-actions">
+          <button id="busca-submit" type="submit">Buscar</button>
+          <button id="busca-clear" type="button" class="secondary">Limpar filtros</button>
+        </div>
+      </form>
+      <div class="list-toolbar">
+        <span id="busca-count" class="count" aria-live="polite"></span>
+      </div>
+      <p id="busca-error" class="error" role="alert" aria-live="polite"></p>
+      <div class="table-wrap">
+        <table class="games" aria-describedby="busca-count">
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="title">Título <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="platform">Plataforma <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-sort="genre">Gênero <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-sort="release_year">Ano <span class="arrow" aria-hidden="true"></span></button></th>
+              <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-sort="rating">Nota <span class="arrow" aria-hidden="true"></span></button></th>
+            </tr>
+          </thead>
+          <tbody id="busca-body"></tbody>
+        </table>
+      </div>
+      <p id="busca-empty" class="list-empty" hidden>Nenhum jogo encontrado para os filtros informados.</p>
+      <nav class="pager" aria-label="Paginação da busca">
+        <button id="busca-prev" type="button" class="secondary">Anterior</button>
+        <span id="busca-page-info"></span>
+        <button id="busca-next" type="button" class="secondary">Próxima</button>
+      </nav>
       <!-- ===== #4 fim ===== -->
 
       <!-- ===== #5 inicio: exportação CSV web (A) ===== -->
@@ -663,6 +727,141 @@
     // ===== #3 fim =====
 
     // ===== #4 inicio: busca web (C) =====
+    const SEARCH_PAGE_SIZE = 5;
+    // Parâmetro da API -> campo do formulário.
+    const SEARCH_FIELDS = {
+      q: "busca-q",
+      platform: "busca-platform",
+      genre: "busca-genre",
+      year_min: "busca-year-min",
+      year_max: "busca-year-max",
+      rating_min: "busca-rating-min",
+    };
+    // `filters` guarda os filtros JÁ aplicados: paginar e ordenar não usam o que foi digitado e ainda não buscado.
+    const searchState = { page: 1, sort: "title", order: "asc", total: 0, items: [], filters: {}, seq: 0 };
+    const searchForm = document.getElementById("busca-form");
+    const searchBody = document.getElementById("busca-body");
+    const searchError = document.getElementById("busca-error");
+    const searchPrev = document.getElementById("busca-prev");
+    const searchNext = document.getElementById("busca-next");
+
+    function searchLastPage() {
+      return Math.max(1, Math.ceil(searchState.total / SEARCH_PAGE_SIZE));
+    }
+
+    function readSearchFilters() {
+      const filters = {};
+      for (const [param, id] of Object.entries(SEARCH_FIELDS)) {
+        const value = document.getElementById(id).value.trim();
+        if (value) filters[param] = value;
+      }
+      return filters;
+    }
+
+    function renderSearch() {
+      searchBody.replaceChildren();
+      for (const game of searchState.items) {
+        const row = document.createElement("tr");
+        // textContent (nunca innerHTML): textos vindos do banco não executam HTML.
+        for (const field of ["title", "platform", "genre", "release_year", "rating"]) {
+          const cell = document.createElement("td");
+          cell.textContent = field === "rating" ? Number(game.rating).toFixed(1) : String(game[field]);
+          if (field === "rating" || field === "release_year") cell.className = "num";
+          row.append(cell);
+        }
+        searchBody.append(row);
+      }
+
+      const last = searchLastPage();
+      document.getElementById("busca-empty").hidden = searchState.total > 0;
+      document.getElementById("busca-count").textContent = `${searchState.total} jogo(s) encontrado(s)`;
+      document.getElementById("busca-page-info").textContent = `Página ${searchState.page} de ${last}`;
+      searchPrev.disabled = searchState.page <= 1;
+      searchNext.disabled = searchState.page >= last;
+
+      document.querySelectorAll("#tab-busca [data-sort]").forEach((button) => {
+        const active = button.dataset.sort === searchState.sort;
+        const ascending = searchState.order === "asc";
+        button.querySelector(".arrow").textContent = active ? (ascending ? "▲" : "▼") : "";
+        button.closest("th").setAttribute("aria-sort", active ? (ascending ? "ascending" : "descending") : "none");
+      });
+    }
+
+    async function runSearch() {
+      searchError.textContent = "";
+      // Respostas antigas (de uma busca anterior ainda em andamento) são descartadas.
+      const seq = ++searchState.seq;
+      const query = new URLSearchParams({
+        ...searchState.filters,
+        page: String(searchState.page),
+        page_size: String(SEARCH_PAGE_SIZE),
+        sort: searchState.sort,
+        order: searchState.order,
+      });
+      try {
+        const response = await apiFetch(`/records/search?${query}`);
+        if (seq !== searchState.seq || response.status === 401) return;
+        if (response.status === 400) {
+          searchError.textContent = "Filtros inválidos. Confira os valores informados.";
+          return;
+        }
+        if (!response.ok) throw new Error("falha na busca");
+        const data = await response.json();
+        if (seq !== searchState.seq) return;
+        searchState.total = data.total;
+        // Se a página pedida ficou além do último resultado, volta para a última página existente.
+        if (data.items.length === 0 && searchState.page > 1) {
+          searchState.page = searchLastPage();
+          return runSearch();
+        }
+        searchState.items = data.items;
+        renderSearch();
+      } catch {
+        if (seq === searchState.seq) searchError.textContent = "Não foi possível buscar os jogos.";
+      }
+    }
+
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const filters = readSearchFilters();
+      if (filters.year_min && filters.year_max && Number(filters.year_min) > Number(filters.year_max)) {
+        searchError.textContent = "O ano inicial não pode ser maior que o final.";
+        return;
+      }
+      searchState.filters = filters;
+      searchState.page = 1;
+      runSearch();
+    });
+
+    // Limpar filtros: esvazia o formulário e volta à listagem completa (primeira página, ordem padrão).
+    document.getElementById("busca-clear").addEventListener("click", () => {
+      searchForm.reset();
+      Object.assign(searchState, { filters: {}, page: 1, sort: "title", order: "asc" });
+      runSearch();
+    });
+
+    document.querySelectorAll("#tab-busca [data-sort]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const field = button.dataset.sort;
+        if (searchState.sort === field) searchState.order = searchState.order === "asc" ? "desc" : "asc";
+        else { searchState.sort = field; searchState.order = "asc"; }
+        searchState.page = 1;
+        runSearch();
+      });
+    });
+
+    searchPrev.addEventListener("click", () => { searchState.page -= 1; runSearch(); });
+    searchNext.addEventListener("click", () => { searchState.page += 1; runSearch(); });
+
+    // Ao abrir a aba, busca com os filtros já aplicados (na primeira vez, sem filtros = todos os jogos).
+    document.querySelector('[data-tab="busca"]').addEventListener("click", runSearch);
+    // Ao sair (logout), a próxima sessão começa sem filtros nem resultados antigos.
+    new MutationObserver(() => {
+      if (!appView.hidden) return;
+      searchForm.reset();
+      Object.assign(searchState, { page: 1, sort: "title", order: "asc", total: 0, items: [], filters: {}, seq: searchState.seq + 1 });
+      renderSearch();
+    }).observe(appView, { attributes: true, attributeFilter: ["hidden"] });
     // ===== #4 fim =====
 
     // ===== #5 inicio: exportação CSV web (A) =====
