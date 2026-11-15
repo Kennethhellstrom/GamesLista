@@ -374,6 +374,60 @@ Execute com `docker compose run --rm tests`.
 <!-- ===== #8 fim ===== -->
 
 <!-- ===== #9 inicio: listagem/exclusão CLI (C) ===== -->
+## #9 Listagem e exclusão pela CLI
+
+A CLI lista jogos com paginação e ordenação e exclui jogos pela API, com o **mesmo comportamento da Web** (issue #3). Ela não acessa o banco diretamente: usa rotas próprias em `/api/cli/*`, e o banco usa SQL próprio da CLI (`cliListRecords`, `cliCountRecords` e `cliDeleteRecord` em `db.ts`). Os jogos excluídos pela CLI somem também da Web, e vice-versa.
+
+### Comandos
+
+| Comando | Descrição |
+|---|---|
+| `list [--page N] [--page-size N] [--sort CAMPO] [--order asc\|desc]` | Lista os jogos ativos, uma página por vez |
+| `delete <id>` | Exclui o jogo `<id>` (exclusão lógica) |
+
+| Opção | Padrão | Regra |
+|---|---|---|
+| `--page` | `1` | Inteiro positivo |
+| `--page-size` | `5` | Inteiro de 1 a 100 |
+| `--sort` | `id` | `id`, `title`, `platform`, `genre`, `rating` ou `release_year` |
+| `--order` | `asc` | `asc` ou `desc` |
+
+**Exclusão lógica:** `delete` marca o jogo como inativo (`active = 0`) em vez de apagar a linha. Listagens da CLI e da Web só mostram jogos com `active = 1`. Excluir um id inexistente ou já excluído retorna erro 404.
+
+### Autenticação
+
+Os dois comandos exigem o token do login, informado em `GAMESLIST_TOKEN` (ver a issue #8). Sem token válido, a API responde **401**.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/web/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli list --page 2 --page-size 3 --sort title --order desc
+# Jogos (página 2 de 10, 29 no total):
+# #12 Portal 2 | PC | Puzzle | 2011 | nota 9.5
+# ...
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli delete 12
+# Jogo 12 excluído (HTTP 204).
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli delete 12
+# Error: Jogo 12 não encontrado (404).
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli list --page 0
+# Error: Parâmetros inválidos (400). Use --page e --page-size (1 a 100) com números inteiros, ...
+```
+
+### Endpoints
+
+Os dois exigem `Authorization: Bearer <token>` (sem token, **401**).
+
+| Método | Rota | Resposta |
+|---|---|---|
+| GET | `/api/cli/records?page=&page_size=&sort=&order=` | 200 `{items, page, page_size, total}`; 400 se algum parâmetro for inválido |
+| DELETE | `/api/cli/records/:id` | 204 se excluiu; 404 se o id não existe, é inválido ou já foi excluído |
+
+Logs (camadas `api` e `db`, `client: "cli"`, mesmo `request_id`): operações `cli_list_records`, `cli_count_records` e `cli_delete_record`.
 <!-- ===== #9 fim ===== -->
 
 <!-- ===== #10 inicio: busca CLI (B) ===== -->
