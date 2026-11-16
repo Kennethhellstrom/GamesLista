@@ -5,10 +5,13 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth, validateRecord } from "./api.handler.js";
 import {
   type Queryable,
+  type SearchFilters,
   cliCountRecords,
+  cliCountSearchRecords,
   cliDeleteRecord,
   cliInsertRecord,
   cliListRecords,
+  cliSearchRecords,
   cliUpdateRecord,
   createPool,
   initSchema,
@@ -437,6 +440,51 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #9 fim =====
 
   // ===== #10 inicio: busca CLI (B) =====
+  app.get("/api/cli/records/search", cliAuth, async (req: Request, res: Response) => {
+    const page = positiveInt(req.query.page, 1);
+    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
+    const sort = req.query.sort ?? "id";
+    const order = req.query.order ?? "asc";
+    const q = textFilter(req.query.q);
+    const platform = textFilter(req.query.platform);
+    const genre = textFilter(req.query.genre);
+    const yearMin = yearFilter(req.query.year_min);
+    const yearMax = yearFilter(req.query.year_max);
+    const ratingMin = ratingFilter(req.query.rating_min);
+    if (
+      page === null ||
+      pageSize === null ||
+      pageSize > MAX_PAGE_SIZE ||
+      !isSortField(sort) ||
+      (order !== "asc" && order !== "desc") ||
+      q === null ||
+      platform === null ||
+      genre === null ||
+      yearMin === null ||
+      yearMax === null ||
+      ratingMin === null
+    ) {
+      apiLog(res, "cli", "WARN", "cli_search_records", "Parâmetros de busca inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const requestId = requestIdOf(res);
+      const filters: SearchFilters = { q, platform, genre, yearMin, yearMax, ratingMin };
+      const items = await cliSearchRecords(
+        db,
+        { ...filters, page, pageSize, sort, order },
+        "cli",
+        requestId,
+      );
+      const total = await cliCountSearchRecords(db, filters, "cli", requestId);
+      apiLog(res, "cli", "INFO", "cli_search_records", `Busca devolvida (página ${page})`);
+      res.status(200).json({ items, page, page_size: pageSize, total });
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_search_records", "Erro interno ao buscar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
   // ===== #10 fim =====
 
   // ===== #11 inicio: exportação CSV CLI (C) =====

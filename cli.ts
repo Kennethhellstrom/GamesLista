@@ -21,6 +21,9 @@ function printHelp(output: Output): void {
       "                                Edit a game, replacing all fields (requires GAMESLIST_TOKEN)",
       "  list [--page N] [--page-size N] [--sort FIELD] [--order asc|desc]",
       "                                List games, paginated (requires GAMESLIST_TOKEN)",
+      "  search [--q TEXT] [--platform TEXT] [--genre TEXT] [--year-min N] [--year-max N]",
+      "         [--rating-min N] [--page N] [--page-size N] [--sort FIELD] [--order asc|desc]",
+      "                                Search games with combined filters (requires GAMESLIST_TOKEN)",
       "  delete <id>                   Delete a game (requires GAMESLIST_TOKEN)",
       "",
       "Environment:",
@@ -338,6 +341,90 @@ export async function run(
   }
   // ===== #9 fim =====
   // ===== #10 inicio =====
+  if (command === "search") {
+    let options: Map<string, string>;
+    try {
+      options = parseOptions(args.slice(1), [
+        "--q",
+        "--platform",
+        "--genre",
+        "--year-min",
+        "--year-max",
+        "--rating-min",
+        "--page",
+        "--page-size",
+        "--sort",
+        "--order",
+      ]);
+    } catch (error) {
+      output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
+      return 1;
+    }
+
+    const token = env.GAMESLIST_TOKEN;
+    if (!token) {
+      output("Error: Defina GAMESLIST_TOKEN com o token obtido no login.");
+      return 1;
+    }
+
+    const query = new URLSearchParams();
+    for (const [flag, value] of options) {
+      query.set(flag.slice(2).replaceAll("-", "_"), value);
+    }
+    const queryString = query.toString();
+    const path = `/api/cli/records/search${queryString ? `?${queryString}` : ""}`;
+    const response = await request(
+      fetchFn,
+      `${apiUrl(env)}${path}`,
+      { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+      output,
+    );
+    if (!response) {
+      return 1;
+    }
+    if (response.status === 401) {
+      output("Error: Token ausente ou inválido (401). Faça login e atualize GAMESLIST_TOKEN.");
+      return 1;
+    }
+    if (response.status === 400) {
+      output(
+        "Error: Parâmetros inválidos (400). Use filtros de texto de até 100 caracteres, " +
+          "--year-min/--year-max (inteiros positivos), --rating-min (0 a 10), --page e --page-size (1 a 100), " +
+          "--sort (id, title, platform, genre, rating, release_year) e --order (asc, desc).",
+      );
+      return 1;
+    }
+    if (!response.ok) {
+      output(`Error: search request failed with HTTP ${response.status}.`);
+      return 1;
+    }
+
+    const data = (await response.json()) as {
+      items: {
+        id: number;
+        title: string;
+        platform: string;
+        genre: string;
+        release_year: number;
+        rating: number;
+        notes: string | null;
+      }[];
+      page: number;
+      page_size: number;
+      total: number;
+    };
+    output(`Jogos encontrados (${data.total} no total; página ${data.page}):`);
+    output("ID | Título | Plataforma | Gênero | Ano | Nota | Observações");
+    if (data.items.length === 0) {
+      output("Nenhum jogo encontrado.");
+    }
+    for (const game of data.items) {
+      output(
+        `${game.id} | ${game.title} | ${game.platform} | ${game.genre} | ${game.release_year} | ${game.rating} | ${game.notes ?? ""}`,
+      );
+    }
+    return 0;
+  }
   // ===== #10 fim =====
   // ===== #11 inicio =====
   // ===== #11 fim =====

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type Queryable, type SearchFilters, webCountSearchRecords, webSearchRecords } from "../db.js";
+import {
+  type ListOptions,
+  type Queryable,
+  type SearchFilters,
+  webCountSearchRecords,
+  webSearchRecords,
+} from "../db.js";
 
 // Testes da issue #4 (banco: busca com filtros combináveis e contagem do resultado).
 
@@ -42,7 +48,7 @@ function failingDb(): Queryable {
 const PAGE = { page: 1, pageSize: 5, sort: "title", order: "asc" } as const;
 
 /** Executa a busca e devolve o SQL e os parâmetros enviados ao banco. */
-async function search(filters: SearchFilters, extra: Partial<typeof PAGE> = {}): Promise<[string, unknown[]]> {
+async function search(filters: SearchFilters, extra: Partial<ListOptions> = {}): Promise<[string, unknown[]]> {
   const db = fakeDb();
   await webSearchRecords(db, { ...PAGE, ...extra, ...filters }, "web", RID);
   return db.query.mock.calls[0] as [string, unknown[]];

@@ -238,3 +238,68 @@ describe("GET /api/web/records/search", () => {
     ]);
   });
 });
+
+describe("GET /api/cli/records/search", () => {
+  it("devolve a mesma resposta da Web para os mesmos três filtros, paginação e ordenação", async () => {
+    const db = gamesDb(ITEMS, 12);
+    const { base, auth } = await listen(db);
+    const query =
+      "?q=ha&platform=PC&genre=Roguelike&year_min=2015&rating_min=8&page=2&page_size=3&sort=rating&order=desc";
+
+    const webResponse = await fetch(`${base}/api/web/records/search${query}`, { headers: auth });
+    const cliResponse = await fetch(`${base}/api/cli/records/search${query}`, { headers: auth });
+
+    expect(webResponse.status).toBe(200);
+    expect(cliResponse.status).toBe(200);
+    expect(await cliResponse.json()).toEqual(await webResponse.json());
+    const requestId = cliResponse.headers.get("x-request-id");
+    expect(logs().filter((entry) => entry.request_id === requestId).map((entry) => `${entry.layer}:${entry.operation}`)).toEqual([
+      "db:cli_search_records",
+      "db:cli_count_search_records",
+      "api:cli_search_records",
+    ]);
+  });
+
+  it("rejeita parâmetros inválidos sem consultar o banco", async () => {
+    const db = gamesDb(ITEMS);
+    const { base, auth } = await listen(db);
+
+    const response = await fetch(`${base}/api/cli/records/search?q=a&q=b`, { headers: auth });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Parâmetros inválidos" });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(logs().find((entry) => entry.operation === "cli_search_records")).toMatchObject({
+      level: "WARN",
+      client: "cli",
+    });
+  });
+
+  it("exige token válido", async () => {
+    const db = gamesDb(ITEMS);
+    const { base } = await listen(db);
+
+    expect((await fetch(`${base}/api/cli/records/search`)).status).toBe(401);
+    expect(
+      (
+        await fetch(`${base}/api/cli/records/search?q=a`, {
+          headers: { Authorization: "Bearer inválido" },
+        })
+      ).status,
+    ).toBe(401);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it("responde 500 e registra erro quando o banco falha", async () => {
+    const { base, auth } = await listen(failingDb());
+
+    const response = await fetch(`${base}/api/cli/records/search?platform=PC`, { headers: auth });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Erro interno" });
+    expect(logs().filter((entry) => entry.level === "ERROR").map((entry) => `${entry.layer}:${entry.client}`)).toEqual([
+      "db:cli",
+      "api:cli",
+    ]);
+  });
+});

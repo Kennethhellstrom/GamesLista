@@ -743,6 +743,51 @@ export async function cliDeleteRecord(
 // ===== #9 fim =====
 
 // ===== #10 inicio: busca CLI (B) =====
+/** Busca uma página de jogos ativos para a CLI com os mesmos filtros da Web e SQL de leitura próprio. */
+export async function cliSearchRecords(
+  db: Queryable,
+  options: SearchOptions,
+  client: ClientKind,
+  requestId: string,
+): Promise<GameRecord[]> {
+  const { where, values } = buildSearchWhere(options);
+  const column = SORT_COLUMNS[options.sort];
+  const direction = options.order === "desc" ? "DESC" : "ASC";
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_search_records",
+    "Busca de jogos pela CLI concluída",
+    `SELECT id, title, platform, genre, release_year, rating, notes
+       FROM games
+      WHERE ${where}
+      ORDER BY ${column} ${direction}, id ASC
+      LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    [...values, options.pageSize, (options.page - 1) * options.pageSize],
+  );
+  return rows as GameRecord[];
+}
+
+/** Total de jogos ativos que atendem aos filtros da busca pela CLI. */
+export async function cliCountSearchRecords(
+  db: Queryable,
+  filters: SearchFilters,
+  client: ClientKind,
+  requestId: string,
+): Promise<number> {
+  const { where, values } = buildSearchWhere(filters);
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_count_search_records",
+    "Contagem da busca pela CLI concluída",
+    `SELECT COUNT(*) AS total FROM games WHERE ${where}`,
+    values,
+  );
+  return Number((rows[0] as { total: string | number }).total);
+}
 // ===== #10 fim =====
 
 // ===== #11 inicio: exportação CSV CLI (C) =====

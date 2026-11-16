@@ -495,6 +495,38 @@ Logs (camadas `api` e `db`, `client: "cli"`, mesmo `request_id`): operações `c
 <!-- ===== #9 fim ===== -->
 
 <!-- ===== #10 inicio: busca CLI (B) ===== -->
+## #10 Busca avançada pela CLI
+
+O comando `search` usa a API protegida da CLI e aceita os mesmos filtros combináveis da busca Web. Os filtros presentes são combinados com `AND`, e os resultados seguem as mesmas regras de correspondência, ordenação e paginação. A CLI não acessa o banco diretamente.
+
+### Comando e opções
+
+| Opção | Parâmetro da API | Regra |
+|---|---|---|
+| `--q` | `q` | Trecho do título, sem diferenciar maiúsculas |
+| `--platform` | `platform` | Plataforma exata, sem diferenciar maiúsculas |
+| `--genre` | `genre` | Gênero exato, sem diferenciar maiúsculas |
+| `--year-min` / `--year-max` | `year_min` / `year_max` | Limites inclusivos de ano |
+| `--rating-min` | `rating_min` | Nota mínima inclusiva, de 0 a 10 |
+| `--page` / `--page-size` | `page` / `page_size` | Página positiva; tamanho entre 1 e 100 |
+| `--sort` / `--order` | `sort` / `order` | Campo permitido e ordem `asc` ou `desc` |
+
+### Exemplo
+
+```bash
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli search \
+  --platform PC --genre Roguelike --year-min 2015 --rating-min 8 \
+  --page 1 --page-size 10 --sort rating --order desc
+# Jogos encontrados (29 no total; página 1):
+# ID | Título | Plataforma | Gênero | Ano | Nota | Observações
+# 12 | Hades | PC | Roguelike | 2020 | 9.3 |
+```
+
+### Endpoint e validação
+
+`GET /api/cli/records/search` aceita `q`, `platform`, `genre`, `year_min`, `year_max`, `rating_min`, `page`, `page_size`, `sort` e `order`. A resposta é `200 {items, page, page_size, total}`; parâmetros inválidos retornam **400**, e token ausente ou inválido retorna **401**.
+
+O teste de equivalência envia os mesmos parâmetros para `/api/web/records/search` e `/api/cli/records/search` e compara as respostas. Os testes de banco cobrem filtros combinados, SQL parametrizado e logs com o mesmo `request_id`. Execute com `docker compose run --rm tests`.
 <!-- ===== #10 fim ===== -->
 
 <!-- ===== #11 inicio: exportação CSV CLI (C) ===== -->
