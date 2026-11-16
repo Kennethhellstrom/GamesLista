@@ -8,6 +8,7 @@ import {
   type SearchFilters,
   cliCountRecords,
   cliCountSearchRecords,
+  cliDashboard,
   cliDeleteRecord,
   cliInsertRecord,
   cliListRecords,
@@ -491,6 +492,19 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #11 fim =====
 
   // ===== #12 inicio: indicadores CLI (B) =====
+
+  // Mesmos 3 indicadores e mesmo formato JSON do dashboard Web, com SQL próprio da CLI.
+  app.get("/api/cli/dashboard", cliAuth, async (_req: Request, res: Response) => {
+    try {
+      const data = await cliDashboard(db, "cli", requestIdOf(res));
+      apiLog(res, "cli", "INFO", "cli_dashboard", "Indicadores devolvidos");
+      res.status(200).json(data);
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_dashboard", "Erro interno ao calcular os indicadores");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #12 fim =====
 
   // Erros inesperados (ex.: JSON malformado) viram respostas JSON, sem vazar detalhes.
