@@ -794,4 +794,54 @@ export async function cliCountSearchRecords(
 // ===== #11 fim =====
 
 // ===== #12 inicio: indicadores CLI (B) =====
+
+/**
+ * Indicadores para a CLI, com SQL próprio (sem chamar `webDashboard`): jogos por gênero, jogos por
+ * plataforma e nota média por ano de lançamento (2 casas), sempre só sobre jogos ativos (`active = 1`).
+ * Devolve o mesmo formato do dashboard Web (`DashboardData`).
+ */
+export async function cliDashboard(db: Queryable, client: ClientKind, requestId: string): Promise<DashboardData> {
+  const byGenre = await run(
+    db,
+    client,
+    requestId,
+    "cli_dashboard_by_genre",
+    "Indicador por gênero calculado para a CLI",
+    `SELECT genre AS label, COUNT(*) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY genre
+      ORDER BY value DESC, label ASC`,
+  );
+  const byPlatform = await run(
+    db,
+    client,
+    requestId,
+    "cli_dashboard_by_platform",
+    "Indicador por plataforma calculado para a CLI",
+    `SELECT platform AS label, COUNT(*) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY platform
+      ORDER BY value DESC, label ASC`,
+  );
+  const avgByYear = await run(
+    db,
+    client,
+    requestId,
+    "cli_dashboard_avg_rating_by_year",
+    "Indicador de nota média por ano calculado para a CLI",
+    `SELECT release_year AS label, ROUND(AVG(rating)::numeric, 2) AS value
+       FROM games
+      WHERE active = 1
+      GROUP BY release_year
+      ORDER BY release_year ASC`,
+  );
+  return {
+    by_genre: toPoints(byGenre),
+    by_platform: toPoints(byPlatform),
+    avg_rating_by_year: toPoints(avgByYear),
+  };
+}
+
 // ===== #12 fim =====
