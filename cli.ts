@@ -1,8 +1,10 @@
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type Environment = Record<string, string | undefined>;
 type Output = (message: string) => void;
+type SaveFile = (path: string, content: string) => Promise<void>;
 
 const DEFAULT_API_URL = "http://api:8080";
 
@@ -25,12 +27,17 @@ function printHelp(output: Output): void {
       "         [--rating-min N] [--page N] [--page-size N] [--sort FIELD] [--order asc|desc]",
       "                                Search games with combined filters (requires GAMESLIST_TOKEN)",
       "  delete <id>                   Delete a game (requires GAMESLIST_TOKEN)",
+      "  export [--q TEXT] [--platform TEXT] [--genre TEXT] [--year-min N] [--year-max N]",
+      "         [--rating-min N] [--output FILE.csv]",
+      "                                Export all games matching the filters as CSV, not just one page",
+      "                                (requires GAMESLIST_TOKEN). Without --output, prints the CSV",
       "  dashboard                     Show the indicators: games by genre, by platform and average rating by year",
       "                                (requires GAMESLIST_TOKEN)",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
       "  GAMESLIST_TOKEN               Bearer token for authenticated commands",
+      "  GAMESLIST_EXPORT_DIR          Folder for a relative --output (default: current folder)",
     ].join("\n"),
   );
 }
@@ -88,11 +95,18 @@ async function request(
   }
 }
 
+/** Grava o arquivo, criando as pastas que faltarem. */
+export async function saveFile(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content, "utf8");
+}
+
 export async function run(
   args: string[],
   fetchFn: typeof fetch,
   output: Output,
   env: Environment,
+  save: SaveFile = saveFile,
 ): Promise<number> {
   const command = args[0];
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -429,6 +443,78 @@ export async function run(
   }
   // ===== #10 fim =====
   // ===== #11 inicio =====
+  if (command === "export") {
+    let options: Map<string, string>;
+    try {
+      options = parseOptions(args.slice(1), [
+        "--q",
+        "--platform",
+        "--genre",
+        "--year-min",
+        "--year-max",
+        "--rating-min",
+        "--output",
+      ]);
+    } catch (error) {
+      output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
+      return 1;
+    }
+
+    const token = env.GAMESLIST_TOKEN;
+    if (!token) {
+      output("Error: Defina GAMESLIST_TOKEN com o token obtido no login.");
+      return 1;
+    }
+
+    // Os filtros vão para a API (que valida); --output só diz onde gravar e não vai na consulta.
+    const query = new URLSearchParams();
+    for (const [flag, value] of options) {
+      if (flag !== "--output") query.set(flag.slice(2).replaceAll("-", "_"), value);
+    }
+    const queryString = query.toString();
+    const response = await request(
+      fetchFn,
+      `${apiUrl(env)}/api/cli/records/export${queryString ? `?${queryString}` : ""}`,
+      { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+      output,
+    );
+    if (!response) {
+      return 1;
+    }
+    if (response.status === 401) {
+      output("Error: Token ausente ou inválido (401). Faça login e atualize GAMESLIST_TOKEN.");
+      return 1;
+    }
+    if (response.status === 400) {
+      output(
+        "Error: Parâmetros inválidos (400). Use filtros de texto de até 100 caracteres, " +
+          "--year-min/--year-max (inteiros positivos) e --rating-min (0 a 10).",
+      );
+      return 1;
+    }
+    if (!response.ok) {
+      output(`Error: export request failed with HTTP ${response.status}.`);
+      return 1;
+    }
+
+    const csv = await response.text();
+    const target = options.get("--output");
+    if (!target) {
+      output(csv);
+      return 0;
+    }
+
+    // Caminho relativo vai para GAMESLIST_EXPORT_DIR (no Compose, a pasta ./exports do computador).
+    const path = resolve(env.GAMESLIST_EXPORT_DIR || ".", target);
+    try {
+      await save(path, csv);
+    } catch (error) {
+      output(`Error: Não foi possível gravar o arquivo: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+      return 1;
+    }
+    output(`CSV gravado em ${path} (HTTP ${response.status}).`);
+    return 0;
+  }
   // ===== #11 fim =====
   // ===== #12 inicio =====
   if (command === "dashboard") {
