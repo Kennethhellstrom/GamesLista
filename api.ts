@@ -10,6 +10,7 @@ import {
   cliCountSearchRecords,
   cliDashboard,
   cliDeleteRecord,
+  cliExportRecords,
   cliInsertRecord,
   cliListRecords,
   cliSearchRecords,
@@ -489,6 +490,61 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #10 fim =====
 
   // ===== #11 inicio: exportação CSV CLI (C) =====
+
+  // Exportação da CLI: mesmos filtros, colunas e formato CSV da Web (`csvField`, aspas e CRLF), com SQL próprio
+  // e sem paginação (todos os jogos ativos que atendem aos filtros).
+  app.get("/api/cli/records/export", cliAuth, async (req: Request, res: Response) => {
+    const q = textFilter(req.query.q);
+    const platform = textFilter(req.query.platform);
+    const genre = textFilter(req.query.genre);
+    const yearMin = yearFilter(req.query.year_min);
+    const yearMax = yearFilter(req.query.year_max);
+    const ratingMin = ratingFilter(req.query.rating_min);
+    if (
+      q === null ||
+      platform === null ||
+      genre === null ||
+      yearMin === null ||
+      yearMax === null ||
+      ratingMin === null
+    ) {
+      apiLog(res, "cli", "WARN", "cli_export_records", "Parâmetros de exportação inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const filters: SearchFilters = { q, platform, genre, yearMin, yearMax, ratingMin };
+      const records = await cliExportRecords(db, filters, "cli", requestIdOf(res));
+      const header = ["id", "title", "platform", "genre", "release_year", "rating", "notes", "active"];
+      const lines = [
+        header.map(csvField).join(","),
+        ...records.map((record) =>
+          [
+            record.id,
+            record.title,
+            record.platform,
+            record.genre,
+            record.release_year,
+            record.rating,
+            record.notes,
+            record.active,
+          ]
+            .map(csvField)
+            .join(","),
+        ),
+      ];
+      apiLog(res, "cli", "INFO", "cli_export_records", `Exportação CSV devolvida (${records.length} jogos)`);
+      res
+        .status(200)
+        .setHeader("Content-Type", "text/csv; charset=utf-8")
+        .setHeader("Content-Disposition", 'attachment; filename="games.csv"')
+        .send(lines.join("\r\n"));
+    } catch {
+      apiLog(res, "cli", "ERROR", "cli_export_records", "Erro interno ao exportar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // ===== #11 fim =====
 
   // ===== #12 inicio: indicadores CLI (B) =====
