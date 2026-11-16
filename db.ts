@@ -520,6 +520,34 @@ export async function webCountSearchRecords(
 // ===== #4 fim =====
 
 // ===== #5 inicio: exportação CSV web (A) =====
+
+export interface ExportRecord extends GameRecord {
+  active: number;
+}
+
+/** Exporta todos os jogos ativos que atendem aos filtros, sem paginação. */
+export async function webExportRecords(
+  db: Queryable,
+  filters: SearchFilters,
+  client: ClientKind,
+  requestId: string,
+): Promise<ExportRecord[]> {
+  const { where, values } = buildSearchWhere(filters);
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "export_records",
+    "Exportação de jogos concluída",
+    `SELECT id, title, platform, genre, release_year, rating, notes, active
+       FROM games
+      WHERE ${where}
+      ORDER BY LOWER(title) ASC, id ASC`,
+    values,
+  );
+  return rows as ExportRecord[];
+}
+
 // ===== #5 fim =====
 
 // ===== #6 inicio: dashboard web (A) =====

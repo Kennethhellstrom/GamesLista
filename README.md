@@ -264,6 +264,33 @@ Cada busca gera linhas `db` (`search_records` e `count_search_records`) e `api` 
 <!-- ===== #4 fim ===== -->
 
 <!-- ===== #5 inicio: exportação CSV web (A) ===== -->
+## #5 Exportação CSV Web
+
+Na aba **Busca**, o botão **Exportar CSV** baixa todos os jogos ativos que correspondem aos filtros já aplicados, sem limitar a exportação à página exibida. Sem filtros, exporta todos os jogos ativos. A exportação não usa a ordenação selecionada na tabela; o arquivo tem ordenação estável por título e `id`.
+
+### Endpoint
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/web/records/export` | Baixa todos os jogos ativos que atendem aos filtros de busca (`q`, `platform`, `genre`, `year_min`, `year_max`, `rating_min`) como CSV |
+
+Exige `Authorization: Bearer <token>` (sem token válido, **401**). Filtros inválidos respondem **400**. A resposta usa `Content-Type: text/csv; charset=utf-8` e `Content-Disposition: attachment`.
+
+As colunas são `id,title,platform,genre,release_year,rating,notes,active`. Campos são sempre delimitados por aspas; aspas internas são duplicadas, e vírgulas e quebras de linha permanecem dentro do campo CSV. Para reduzir o risco de formula injection ao abrir o arquivo em planilhas, valores textuais iniciados por `=`, `+`, `-` ou `@` (inclusive após espaços ou caracteres de controle) recebem um apóstrofo na exportação. Os dados armazenados no banco não são alterados.
+
+```bash
+# TOKEN obtido no login
+curl -s -G "http://localhost:8080/api/web/records/export" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "platform=PC" --output jogos.csv
+curl -i "http://localhost:8080/api/web/records/export"  # 401 sem token
+```
+
+Cada exportação gera uma linha de log `db` (`export_records`) e uma linha `api` (`export_records`) com o mesmo `request_id`. Erros do banco respondem **500**, sem expor detalhes internos.
+
+### Testes
+
+`tests/exportacao.db.test.ts` e `tests/exportacao.api.test.ts` cobrem exportação sem filtros, filtros combinados, mais de cinco resultados, escape CSV, proteção contra formula injection, parâmetros inválidos (400), 401, logs correlacionados e erro de banco (500). Execute `docker compose run --rm tests`; a cobertura exigida é de 100% das linhas.
 <!-- ===== #5 fim ===== -->
 
 <!-- ===== #6 inicio: dashboard web (A) ===== -->

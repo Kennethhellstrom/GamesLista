@@ -302,6 +302,9 @@
       <!-- ===== #4 fim ===== -->
 
       <!-- ===== #5 inicio: exportação CSV web (A) ===== -->
+      <div class="busca-actions">
+        <button id="busca-export" type="button" class="secondary">Exportar CSV</button>
+      </div>
       <!-- ===== #5 fim ===== -->
     </section>
 
@@ -893,6 +896,29 @@
     // ===== #4 fim =====
 
     // ===== #5 inicio: exportação CSV web (A) =====
+    const exportButton = document.getElementById("busca-export");
+    exportButton.addEventListener("click", async () => {
+      searchError.textContent = "";
+      exportButton.disabled = true;
+      try {
+        const query = new URLSearchParams(searchState.filters);
+        const response = await apiFetch(`/records/export?${query}`);
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error("falha na exportação");
+        const url = URL.createObjectURL(await response.blob());
+        const download = document.createElement("a");
+        download.href = url;
+        download.download = "games.csv";
+        document.body.append(download);
+        download.click();
+        download.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch {
+        searchError.textContent = "Não foi possível exportar os jogos.";
+      } finally {
+        exportButton.disabled = false;
+      }
+    });
     // ===== #5 fim =====
 
     // ===== #6 inicio: dashboard web (A) =====

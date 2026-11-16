@@ -5,6 +5,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { TokenStore, apiLog, createApiHandlers, requestIdOf, requireAuth, validateRecord } from "./api.handler.js";
 import {
   type Queryable,
+  type SearchFilters,
   cliCountRecords,
   cliDeleteRecord,
   cliInsertRecord,
@@ -20,6 +21,7 @@ import {
   webCountSearchRecords,
   webDeleteRecord,
   webDashboard,
+  webExportRecords,
   webListRecords,
   webSearchRecords,
 } from "./db.js";
@@ -192,24 +194,14 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
     return rating <= 10 ? rating : null;
   };
 
-  // Mesmo formato de resposta da listagem; só devolve jogos ativos que atendem a TODOS os filtros enviados.
-  app.get("/api/web/records/search", auth, async (req: Request, res: Response) => {
-    const page = positiveInt(req.query.page, 1);
-    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
-    const sort = req.query.sort ?? "id";
-    const order = req.query.order ?? "asc";
-    const q = textFilter(req.query.q);
-    const platform = textFilter(req.query.platform);
-    const genre = textFilter(req.query.genre);
-    const yearMin = yearFilter(req.query.year_min);
-    const yearMax = yearFilter(req.query.year_max);
-    const ratingMin = ratingFilter(req.query.rating_min);
+  const parseSearchFilters = (query: Request["query"]): SearchFilters | null => {
+    const q = textFilter(query.q);
+    const platform = textFilter(query.platform);
+    const genre = textFilter(query.genre);
+    const yearMin = yearFilter(query.year_min);
+    const yearMax = yearFilter(query.year_max);
+    const ratingMin = ratingFilter(query.rating_min);
     if (
-      page === null ||
-      pageSize === null ||
-      pageSize > MAX_PAGE_SIZE ||
-      !isSortField(sort) ||
-      (order !== "asc" && order !== "desc") ||
       q === null ||
       platform === null ||
       genre === null ||
@@ -217,13 +209,32 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
       yearMax === null ||
       ratingMin === null
     ) {
+      return null;
+    }
+    return { q, platform, genre, yearMin, yearMax, ratingMin };
+  };
+
+  // Mesmo formato de resposta da listagem; só devolve jogos ativos que atendem a TODOS os filtros enviados.
+  app.get("/api/web/records/search", auth, async (req: Request, res: Response) => {
+    const page = positiveInt(req.query.page, 1);
+    const pageSize = positiveInt(req.query.page_size, DEFAULT_PAGE_SIZE);
+    const sort = req.query.sort ?? "id";
+    const order = req.query.order ?? "asc";
+    const filters = parseSearchFilters(req.query);
+    if (
+      page === null ||
+      pageSize === null ||
+      pageSize > MAX_PAGE_SIZE ||
+      !isSortField(sort) ||
+      (order !== "asc" && order !== "desc") ||
+      filters === null
+    ) {
       apiLog(res, "web", "WARN", "search_records", "Parâmetros de busca inválidos");
       res.status(400).json({ error: "Parâmetros inválidos" });
       return;
     }
     try {
       const requestId = requestIdOf(res);
-      const filters = { q, platform, genre, yearMin, yearMax, ratingMin };
       const items = await webSearchRecords(db, { ...filters, page, pageSize, sort, order }, "web", requestId);
       const total = await webCountSearchRecords(db, filters, "web", requestId);
       apiLog(res, "web", "INFO", "search_records", `Busca devolvida (página ${page})`);
@@ -237,6 +248,51 @@ export function createApp(db: Queryable, tokens: TokenStore = new TokenStore()):
   // ===== #4 fim =====
 
   // ===== #5 inicio: exportação CSV web (A) =====
+  const csvCell = (value: string | number | null): string => {
+    let text = value === null ? "" : String(value);
+    if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  app.get("/api/web/records/export", auth, async (req: Request, res: Response) => {
+    const filters = parseSearchFilters(req.query);
+    if (filters === null) {
+      apiLog(res, "web", "WARN", "export_records", "Parâmetros de exportação inválidos");
+      res.status(400).json({ error: "Parâmetros inválidos" });
+      return;
+    }
+    try {
+      const requestId = requestIdOf(res);
+      const records = await webExportRecords(db, filters, "web", requestId);
+      const header = ["id", "title", "platform", "genre", "release_year", "rating", "notes", "active"];
+      const lines = [
+        header.map((cell) => csvCell(cell)).join(","),
+        ...records.map((record) =>
+          [
+            record.id,
+            record.title,
+            record.platform,
+            record.genre,
+            record.release_year,
+            record.rating,
+            record.notes,
+            record.active,
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      apiLog(res, "web", "INFO", "export_records", "CSV de jogos exportado");
+      res
+        .status(200)
+        .set("Content-Type", "text/csv; charset=utf-8")
+        .set("Content-Disposition", 'attachment; filename="games.csv"')
+        .send(lines.join("\r\n"));
+    } catch {
+      apiLog(res, "web", "ERROR", "export_records", "Erro interno ao exportar jogos");
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
   // ===== #5 fim =====
 
   // ===== #6 inicio: dashboard web (A) =====

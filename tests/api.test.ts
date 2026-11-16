@@ -56,7 +56,9 @@ describe("GET / (Web)", () => {
     const response = await fetch(`${base}/`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(await response.text()).toContain("GameList");
+    const html = await response.text();
+    expect(html).toContain("GameList");
+    expect(html).toContain('id="busca-export"');
   });
 });
 
