@@ -791,6 +791,34 @@ export async function cliCountSearchRecords(
 // ===== #10 fim =====
 
 // ===== #11 inicio: exportação CSV CLI (C) =====
+
+/**
+ * Exporta para a CLI todos os jogos ativos que atendem aos filtros, sem paginação, com SELECT próprio
+ * (sem chamar `webExportRecords`). Só o WHERE parametrizado é montado por `buildSearchWhere`, o mesmo
+ * da busca, para os filtros terem a mesma semântica na Web e na CLI. Ordenado por id.
+ */
+export async function cliExportRecords(
+  db: Queryable,
+  filters: SearchFilters,
+  client: ClientKind,
+  requestId: string,
+): Promise<ExportRecord[]> {
+  const { where, values } = buildSearchWhere(filters);
+  const rows = await run(
+    db,
+    client,
+    requestId,
+    "cli_export_records",
+    "Exportação de jogos pela CLI concluída",
+    `SELECT id, title, platform, genre, release_year, rating, notes, active
+       FROM games
+      WHERE ${where}
+      ORDER BY id ASC`,
+    values,
+  );
+  return rows as ExportRecord[];
+}
+
 // ===== #11 fim =====
 
 // ===== #12 inicio: indicadores CLI (B) =====
