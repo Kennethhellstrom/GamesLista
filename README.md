@@ -530,6 +530,68 @@ O teste de equivalência envia os mesmos parâmetros para `/api/web/records/sear
 <!-- ===== #10 fim ===== -->
 
 <!-- ===== #11 inicio: exportação CSV CLI (C) ===== -->
+## #11 Exportação pela CLI
+
+O comando `export` exporta em **CSV** todos os jogos ativos que atendem aos filtros, **sem limitar à página atual** (sem filtros, exporta todos), e grava o arquivo em uma pasta do seu computador. A CLI não acessa o banco diretamente: chama `GET /api/cli/records/export`, uma rota própria da CLI com SQL próprio (`cliExportRecords`), separada da exportação da Web (issue #5). Para os mesmos filtros, **CLI e Web geram o mesmo CSV** (conferido nos testes e com `cmp` contra o arquivo da Web).
+
+### Onde fica o arquivo
+
+O serviço `cli` do `docker-compose.yml` monta a pasta **`./exports`** do projeto em `/exports` no contêiner. Um `--output` relativo é gravado ali, então o arquivo aparece em **`./exports/<nome>.csv`** no seu computador, sem copiar nada do contêiner. A pasta é criada se não existir e está no `.gitignore` (os CSV gerados não vão para o repositório). Um caminho absoluto em `--output` é respeitado como está (dentro do contêiner).
+
+### Comando
+
+| Comando | Descrição |
+|---|---|
+| `export [filtros] [--output ARQUIVO.csv]` | Exporta os jogos ativos que atendem aos filtros. Sem `--output`, imprime o CSV na tela |
+
+| Opção | Regra (a mesma da busca, issues #4 e #10) |
+|---|---|
+| `--q` | Título contém o texto (sem diferenciar maiúsculas), até 100 caracteres |
+| `--platform`, `--genre` | Igual ao texto, sem diferenciar maiúsculas (acento conta), até 100 caracteres |
+| `--year-min`, `--year-max` | Ano de lançamento maior ou igual / menor ou igual (inteiro positivo) |
+| `--rating-min` | Nota maior ou igual, de 0 a 10 |
+| `--output` | Nome do arquivo. Relativo: vai para `GAMESLIST_EXPORT_DIR` (`/exports` no Compose, ou seja, `./exports/`) |
+
+Filtros vazios são ignorados e os presentes se combinam com AND. Valores inválidos fazem a API responder **400** e a CLI mostrar o erro.
+
+### Formato do CSV
+
+Colunas `id,title,platform,genre,release_year,rating,notes,active`, uma linha por jogo, ordenadas por `id`. Todos os campos vão entre aspas, aspas internas são duplicadas, vírgulas e quebras de linha dentro do campo são preservadas e as linhas terminam em CRLF. `notes` sem valor sai vazio. Sem resultados, o arquivo tem só o cabeçalho.
+
+### Endpoint
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/cli/records/export` | CSV (`text/csv; charset=utf-8`, `Content-Disposition: attachment`) dos jogos ativos que atendem aos filtros `q`, `platform`, `genre`, `year_min`, `year_max` e `rating_min`, sem paginação |
+
+Exige `Authorization: Bearer <token>` (o mesmo token do login, informado na CLI em `GAMESLIST_TOKEN`). Sem token válido, **401** e o banco não é consultado. Filtro inválido, **400**.
+
+### Exemplos
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/web/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+# Todos os jogos: grava ./exports/todos.csv
+docker compose run --rm -e GAMESLIST_TOKEN="$TOKEN" cli export --output todos.csv
+
+# Só PC com nota mínima 9: grava ./exports/pc9.csv
+docker compose run --rm -e GAMESLIST_TOKEN="$TOKEN" cli export --platform PC --rating-min 9 --output pc9.csv
+
+# Sem --output: imprime o CSV na tela
+docker compose run --rm -e GAMESLIST_TOKEN="$TOKEN" cli export --genre RPG --year-min 2015
+```
+
+Com o seed de 29 jogos (`GAMESLIST_SEED=true`, ver a issue #3): o primeiro exemplo gera 29 linhas de dados mais o cabeçalho e o segundo, 8 linhas de dados mais o cabeçalho (os mesmos 8 jogos da busca `platform=PC&rating_min=9`).
+
+### Logs
+
+Cada exportação gera 1 linha `db` e 1 linha `api` com `client: "cli"`, operação `cli_export_records` e o mesmo `request_id` (`docker compose logs api`). Filtro inválido gera `WARN` na API e falha de banco gera `ERROR` nas duas camadas.
+
+### Testes
+
+`tests/exportacao-cli.db.test.ts`, `tests/exportacao-cli.api.test.ts` e `tests/exportacao-cli.cli.test.ts` cobrem: com filtro, sem filtro, mais de 5 resultados, escape no CSV, arquivo gravado (inclusive a criação da pasta), 401, 400, logs correlacionados, erro de banco e a comparação CLI × Web com os mesmos filtros. Execute `docker compose run --rm tests` (se mudar o código, reconstrua antes: `docker compose --profile tests build tests`).
 <!-- ===== #11 fim ===== -->
 
 <!-- ===== #12 inicio: indicadores CLI (B) ===== -->
