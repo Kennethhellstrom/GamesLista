@@ -533,4 +533,56 @@ O teste de equivalência envia os mesmos parâmetros para `/api/web/records/sear
 <!-- ===== #11 fim ===== -->
 
 <!-- ===== #12 inicio: indicadores CLI (B) ===== -->
+## #12 Indicadores pela CLI
+
+O comando `dashboard` mostra em texto os **mesmos 3 indicadores e valores** do dashboard Web (ver a seção [#6 Dashboard](#6-dashboard) para a explicação de cada indicador). A CLI não acessa o banco diretamente: chama a rota própria `GET /api/cli/dashboard`, e o banco usa SQL próprio da CLI (`cliDashboard` em `db.ts`, sem chamar `webDashboard`). Só jogos ativos (`active = 1`) entram nos cálculos.
+
+### Comando
+
+| Comando | Descrição |
+|---|---|
+| `dashboard` | Mostra jogos por gênero, jogos por plataforma e nota média por ano de lançamento |
+
+O comando não aceita opções e exige o token do login em `GAMESLIST_TOKEN` (ver as issues #1 e #8). Sem token válido, a API responde **401**.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/web/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+docker compose run --rm -e GAMESLIST_TOKEN=$TOKEN cli dashboard
+# Indicadores
+#
+# Jogos por gênero:
+#   Outro: 12
+#   RPG: 5
+#   ...
+#
+# Jogos por plataforma:
+#   PC: 10
+#   ...
+#
+# Nota média por ano de lançamento:
+#   2000: 3.5
+#   ...
+#   2024: 9.15
+```
+
+Com a tabela vazia (nenhum jogo ativo), cada indicador mostra `(sem dados)`. Sem token, o comando avisa para definir `GAMESLIST_TOKEN`; com token inválido, mostra o erro 401.
+
+### Endpoint
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/cli/dashboard` | `{"by_genre":[{"label","value"}],"by_platform":[{"label","value"}],"avg_rating_by_year":[{"label","value"}]}` (o mesmo JSON de `/api/web/dashboard`) |
+
+Exige `Authorization: Bearer <token>` (sem token ou com token inválido, **401**, sem acessar o banco). Sem jogos ativos, as 3 listas vêm vazias. Falha no banco responde **500**.
+
+### Logs
+
+Cada chamada gera 3 linhas `db` (`cli_dashboard_by_genre`, `cli_dashboard_by_platform`, `cli_dashboard_avg_rating_by_year`) e 1 linha `api` (`cli_dashboard`), todas com `client: "cli"` e o mesmo `request_id` (`docker compose logs api`).
+
+### Testes
+
+`tests/indicadores-cli.db.test.ts`, `tests/indicadores-cli.api.test.ts` e `tests/indicadores-cli.cli.test.ts` cobrem o `cliDashboard` (conversão para número, as 3 agregações, filtro de jogos ativos e erro de banco), a rota (com dados, tabela vazia, 401, 500 e logs correlacionados), a **igualdade** entre `/api/web/dashboard` e `/api/cli/dashboard` com dados carregados, e o comando da CLI (saída em texto, tabela vazia, 401, token ausente, opção inválida e falhas de rede). Execute com `docker compose run --rm tests`.
 <!-- ===== #12 fim ===== -->
