@@ -25,6 +25,8 @@ function printHelp(output: Output): void {
       "         [--rating-min N] [--page N] [--page-size N] [--sort FIELD] [--order asc|desc]",
       "                                Search games with combined filters (requires GAMESLIST_TOKEN)",
       "  delete <id>                   Delete a game (requires GAMESLIST_TOKEN)",
+      "  dashboard                     Show the indicators: games by genre, by platform and average rating by year",
+      "                                (requires GAMESLIST_TOKEN)",
       "",
       "Environment:",
       "  GAMESLIST_API_URL             API URL (default: http://api:8080)",
@@ -429,6 +431,61 @@ export async function run(
   // ===== #11 inicio =====
   // ===== #11 fim =====
   // ===== #12 inicio =====
+  if (command === "dashboard") {
+    try {
+      parseOptions(args.slice(1), []);
+    } catch (error) {
+      output(`Error: ${error instanceof Error ? error.message : "Invalid command options."}`);
+      return 1;
+    }
+
+    const token = env.GAMESLIST_TOKEN;
+    if (!token) {
+      output("Error: Defina GAMESLIST_TOKEN com o token obtido no login.");
+      return 1;
+    }
+
+    const response = await request(
+      fetchFn,
+      `${apiUrl(env)}/api/cli/dashboard`,
+      { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+      output,
+    );
+    if (!response) {
+      return 1;
+    }
+    if (response.status === 401) {
+      output("Error: Token ausente ou inválido (401). Faça login e atualize GAMESLIST_TOKEN.");
+      return 1;
+    }
+    if (!response.ok) {
+      output(`Error: dashboard request failed with HTTP ${response.status}.`);
+      return 1;
+    }
+
+    // Mesmo formato JSON do dashboard Web; aqui cada indicador sai como uma lista de texto.
+    const data = (await response.json()) as Record<
+      "by_genre" | "by_platform" | "avg_rating_by_year",
+      { label: string; value: number }[]
+    >;
+    const sections: [string, { label: string; value: number }[]][] = [
+      ["Jogos por gênero", data.by_genre],
+      ["Jogos por plataforma", data.by_platform],
+      ["Nota média por ano de lançamento", data.avg_rating_by_year],
+    ];
+    output("Indicadores");
+    for (const [title, points] of sections) {
+      output("");
+      output(`${title}:`);
+      if (points.length === 0) {
+        output("  (sem dados)");
+      }
+      for (const point of points) {
+        output(`  ${point.label}: ${point.value}`);
+      }
+    }
+    return 0;
+  }
   // ===== #12 fim =====
 
   output(`Error: Unknown command "${command}". Run "gameslista help" for usage.`);
