@@ -6,6 +6,14 @@ Lista de jogos com **Web + CLI** sobre a mesma API REST e o mesmo banco (trabalh
 - **Banco:** PostgreSQL 16
 - **Tudo roda pelo Docker Compose.** No host só são necessários Docker, Docker Compose, um navegador e um terminal.
 
+## Integrantes
+
+| Nome | Matrícula |
+|---|---|
+| Carlos Alexandre | 2650807 |
+| João Pedro | 02650680 |
+| Kenneth | 2650143 |
+
 ## Arquivos de produção
 
 | Papel | Arquivo |
